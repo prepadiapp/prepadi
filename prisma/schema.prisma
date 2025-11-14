@@ -1,0 +1,155 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.lyd/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- 1. AUTH & USER MODELS ---
+
+model User {
+  id              String        @id @default(cuid())
+  name            String?
+  email           String        @unique
+  hashedPassword  String?
+  image           String?
+  emailVerified   DateTime?
+  accounts        Account[]
+  role            UserRole      @default(STUDENT) // Uses the enum below
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  // Relations
+  organizationId  String?
+  organization    Organization? @relation("OrgMembers", fields: [organizationId], references: [id])
+  ownedOrganization Organization? @relation("OrgOwner")
+  quizAttempts    QuizAttempt[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  @@unique([identifier, token])
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String   @unique
+  owner     User     @relation("OrgOwner", fields: [ownerId], references: [id])
+  members   User[]   @relation("OrgMembers")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --- 2. EXAM & CONTENT MODELS ---
+
+// NEW: Model for the exam type
+model Exam {
+  id          String   @id @default(cuid())
+  name        String   @unique // e.g., "WASSCE (WAEC)"
+  shortName   String   @unique // e.g., "WAEC"
+  description String?
+  
+  // Relations
+  subjects    Subject[]     @relation("ExamSubjects")
+  questions   Question[]
+  quizAttempts QuizAttempt[]
+}
+
+model Subject {
+  id           String        @id @default(cuid())
+  name         String        @unique // e.g., "Mathematics"
+  
+  // Relations
+  questions    Question[]
+  quizAttempts QuizAttempt[]
+  
+  // NEW: Many-to-many with Exam
+  exams        Exam[]        @relation("ExamSubjects")
+}
+
+model Question {
+  id          String    @id @default(cuid())
+  text        String    @db.Text
+  explanation String?   @db.Text
+  sourceApi   String?
+  
+  // NEW: Year of the question
+  year        Int
+
+  // Relations
+  subjectId   String
+  subject     Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  
+  // NEW: Relation to Exam
+  examId      String
+  exam        Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
+  
+  options     Option[]
+}
+
+model Option {
+  id         String   @id @default(cuid())
+  text       String
+  isCorrect  Boolean  @default(false)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+// --- 3. PERFORMANCE MODELS ---
+
+model QuizAttempt {
+  id          String   @id @default(cuid())
+  score       Int      // e.g., 85 (percentage)
+  correct     Int      // Total correct answers
+  total       Int      // Total questions answered
+  timeTaken   Int      // Time in seconds
+  createdAt   DateTime @default(now())
+  
+  // NEW: Year of the attempt
+  year        Int
+
+  // Relations
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId   String
+  subject     Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  
+  // NEW: Relation to Exam
+  examId      String
+  exam        Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+}
+
+// --- 4. ENUMS ---
+
+enum UserRole {
+  STUDENT
+  ORGANIZATION
+  ADMIN // Replaced SUPER_ADMIN for simplicity
+}
