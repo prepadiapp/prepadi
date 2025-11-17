@@ -112,6 +112,8 @@ model Question {
   exam        Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
   
   options     Option[]
+
+  userAnswers UserAnswer[]
 }
 
 model Option {
@@ -120,6 +122,8 @@ model Option {
   isCorrect  Boolean  @default(false)
   questionId String
   question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  userAnswers UserAnswer[]
 }
 
 // --- 3. PERFORMANCE MODELS ---
@@ -144,6 +148,27 @@ model QuizAttempt {
   // NEW: Relation to Exam
   examId      String
   exam        Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  
+  userAnswers UserAnswer[]
+}
+
+// Model to store the user's answer for each question in an attempt
+model UserAnswer {
+  id                String  @id @default(cuid())
+  
+  // Relations
+  quizAttemptId     String
+  quizAttempt       QuizAttempt @relation(fields: [quizAttemptId], references: [id], onDelete: Cascade)
+  
+  questionId        String
+  question          Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  // Nullable if they skipped the question
+  selectedOptionId  String?
+  option            Option?     @relation(fields: [selectedOptionId], references: [id], onDelete: Cascade)
+
+  // Store if this answer was correct for faster lookups
+  isCorrect         Boolean
 }
 
 // --- 4. ENUMS ---

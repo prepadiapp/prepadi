@@ -6,8 +6,8 @@ import Providers from '@/components/Providers';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'PrepWave - WAEC Exam Simulator',
-  description: 'Practice for your WAEC exams with real questions.',
+  title: 'Preppadi - WAEC/JAMB Exam Simulator',
+  description: 'Practice for your WAEC/JAMB exams with real questions.',
 };
 
 export default function RootLayout({

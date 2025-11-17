@@ -2,10 +2,13 @@ import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { LineChart } from 'lucide-react';
 import { SignOutButton } from '@/components/SignOutButton';
 import { RoleSwitcher } from '@/components/RoleSwitcher';
 import { ExamSelector } from '@/components/ExamSelector';
 import { UserRole } from '@prisma/client';
+// import { UserRole } from '@/lib/generated/prisma';
+import Link from 'next/link';
 
 /**
  * Server Action to seed default Exams and Subjects.
@@ -119,7 +122,15 @@ export default async function DashboardPage() {
             Let's get practicing.
           </p>
         </div>
-        <SignOutButton />
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link href="/dashboard/performance">
+              <LineChart className="w-4 h-4 mr-2" />
+              My Performance
+            </Link>
+          </Button>
+          <SignOutButton />
+        </div>
       </header>
 
       <main className="space-y-8">
