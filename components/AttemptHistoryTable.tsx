@@ -13,8 +13,7 @@ import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge'; 
 
-// --- Type ---
-// This matches the `history` array from our API
+
 type HistoryData = {
   id: string;
   exam: string;

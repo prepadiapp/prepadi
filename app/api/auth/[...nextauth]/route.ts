@@ -4,6 +4,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
+import { UserRole } from '@/lib/generated/prisma/client';
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -77,7 +78,8 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, account }) {
       if (account && user) {
         token.id = user.id;
-        
+
+        token.role = user.role;
         // Fetch fresh emailVerified status from database
         // (linkAccount event might have just updated it)
         const dbUser = await prisma.user.findUnique({
@@ -86,6 +88,16 @@ export const authOptions: NextAuthOptions = {
         });
         
         token.emailVerified = dbUser?.emailVerified ?? null;
+      } else if (token.id) {
+        // This runs on subsequent loads
+        // We just need to make sure the role is still there
+        if (!token.role) {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id },
+            select: { role: true }
+          });
+          token.role = dbUser?.role ?? UserRole.STUDENT;
+        }
       }
       return token;
     },
@@ -94,7 +106,27 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       session.user.id = token.id as string;
       session.user.emailVerified = token.emailVerified as Date | null;
+      session.user.role = token.role;
       return session;
+    },
+
+     async redirect({ url, baseUrl, token }) {
+      // If a token exists (i.e., user is logged in)
+      if (token) {
+        console.log(`--- [Prepadi REDIRECT] Token role: ${token.role}`);
+        
+        // Check the role on the token
+        if (token.role === UserRole.ADMIN) {
+          // If they are an ADMIN, send them to the admin dashboard
+          // But only if they are trying to go to the base /dashboard
+          const defaultDashboardUrl = `${baseUrl}/dashboard`;
+          if (url === defaultDashboardUrl || url === baseUrl + '/') {
+            return `${baseUrl}/admin`;
+          }
+        }
+      }
+      // Otherwise, return the URL they were trying to go to
+      return url;
     },
   },
 

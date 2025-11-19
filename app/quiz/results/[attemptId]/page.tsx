@@ -3,18 +3,15 @@ import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress'; // For the circular progress
+import { Progress } from '@/components/ui/progress'; 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, Check, Clock, Hash, Percent, Target } from 'lucide-react';
 import Link from 'next/link';
-import { QuizReview } from '@/components/QuizReview'; // Our new component
+import { QuizReview } from '@/components/QuizReview'; 
 
-/**
- * A helper component to render the circular progress bar
- * matching the 84% in the wireframe.
- */
+
 function ScoreCircle({ score }: { score: number }) {
-  // Use CSS magic to make a radial progress bar
+  
   const style = {
     background: `
       radial-gradient(closest-side, white 79%, transparent 80% 100%),
@@ -34,9 +31,7 @@ function ScoreCircle({ score }: { score: number }) {
   );
 }
 
-/**
- * A small helper component for displaying stats.
- */
+
 function StatCard({ title, value, icon }: { title: string, value: string | number, icon: React.ReactNode }) {
   return (
     <Card className="flex-1">
@@ -51,9 +46,7 @@ function StatCard({ title, value, icon }: { title: string, value: string | numbe
   );
 }
 
-/**
- * The main server component for the results page.
- */
+
 export default async function ResultsPage({ params }: { 
   params: Promise<{ attemptId: string }> 
 }) {
@@ -121,7 +114,7 @@ export default async function ResultsPage({ params }: {
         </p>
       </header>
 
-      {/* --- Main Summary Card (as per wireframe) --- */}
+      {/* --- Main Summary Card --- */}
       <Card className="mb-8">
         <CardContent className="flex flex-col items-center p-6 space-y-6">
           {/* Score Circle */}
@@ -169,7 +162,7 @@ export default async function ResultsPage({ params }: {
         </CardContent>
       </Card>
       
-      {/* --- Answer Review Section (as per wireframe) --- */}
+      {/* --- Answer Review Section --- */}
       <QuizReview userAnswers={attempt.userAnswers} />
       
     </div>

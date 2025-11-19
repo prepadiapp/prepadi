@@ -11,7 +11,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// --- 1. AUTH & USER MODELS ---
+//  AUTH & USER MODELS ---
 
 model User {
   id              String        @id @default(cuid())
@@ -65,11 +65,13 @@ model Organization {
   members   User[]   @relation("OrgMembers")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  questions Question[]
 }
 
-// --- 2. EXAM & CONTENT MODELS ---
+// --- EXAM & CONTENT MODELS ---
 
-// NEW: Model for the exam type
+
 model Exam {
   id          String   @id @default(cuid())
   name        String   @unique // e.g., "WASSCE (WAEC)"
@@ -77,7 +79,6 @@ model Exam {
   description String?
   
   // Relations
-  subjects    Subject[]     @relation("ExamSubjects")
   questions   Question[]
   quizAttempts QuizAttempt[]
 }
@@ -89,9 +90,6 @@ model Subject {
   // Relations
   questions    Question[]
   quizAttempts QuizAttempt[]
-  
-  // NEW: Many-to-many with Exam
-  exams        Exam[]        @relation("ExamSubjects")
 }
 
 model Question {
@@ -99,8 +97,6 @@ model Question {
   text        String    @db.Text
   explanation String?   @db.Text
   sourceApi   String?
-  
-  // NEW: Year of the question
   year        Int
 
   // Relations
@@ -114,6 +110,10 @@ model Question {
   options     Option[]
 
   userAnswers UserAnswer[]
+  tags        Tag[]     @relation("QuestionTags")
+
+  organizationId String? // Optional: null for "general" questions
+  organization   Organization? @relation(fields: [organizationId], references: [id])
 }
 
 model Option {
@@ -126,7 +126,15 @@ model Option {
   userAnswers UserAnswer[]
 }
 
-// --- 3. PERFORMANCE MODELS ---
+model Tag {
+  id        String     @id @default(cuid())
+  name      String     @unique // The tag name (e.g., "Trigonometry")
+  
+  // Relations
+  questions Question[] @relation("QuestionTags")
+}
+
+// PERFORMANCE MODELS ---
 
 model QuizAttempt {
   id          String   @id @default(cuid())
@@ -136,7 +144,6 @@ model QuizAttempt {
   timeTaken   Int      // Time in seconds
   createdAt   DateTime @default(now())
   
-  // NEW: Year of the attempt
   year        Int
 
   // Relations
@@ -171,7 +178,7 @@ model UserAnswer {
   isCorrect         Boolean
 }
 
-// --- 4. ENUMS ---
+// ENUMS ---
 
 enum UserRole {
   STUDENT

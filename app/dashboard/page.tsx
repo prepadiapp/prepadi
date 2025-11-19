@@ -7,13 +7,10 @@ import { SignOutButton } from '@/components/SignOutButton';
 import { RoleSwitcher } from '@/components/RoleSwitcher';
 import { ExamSelector } from '@/components/ExamSelector';
 import { UserRole } from '@prisma/client';
-// import { UserRole } from '@/lib/generated/prisma';
+// import { UserRole } from '@/lib/generated/prisma/enums';
 import Link from 'next/link';
 
-/**
- * Server Action to seed default Exams and Subjects.
- * This is for development convenience.
- */
+
 async function seedData() {
   'use server';
 
@@ -138,10 +135,10 @@ export default async function DashboardPage() {
         <ExamSelector exams={exams} />
         
         {/* Component to allow user to change their role */}
-        <RoleSwitcher currentRole={session.user.role} />
+        {/* <RoleSwitcher currentRole={session.user.role} /> */}
 
         {/* --- Seeder Button for Development --- */}
-        {exams.length === 0 && (
+        {/* {exams.length === 0 && (
           <div className="mt-8 p-6 border-dashed border-2 rounded-lg text-center">
             <h3 className="text-xl font-semibold">No Exams Found</h3>
             <p className="mb-4 text-muted-foreground">
@@ -151,7 +148,7 @@ export default async function DashboardPage() {
               <Button type="submit">Seed Dev Data</Button>
             </form>
           </div>
-        )}
+        )} */}
       </main>
     </div>
   );

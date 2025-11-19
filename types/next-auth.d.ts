@@ -1,5 +1,6 @@
 import { User } from 'next-auth';
 import { JWT } from 'next-auth/jwt';
+import { UserRole } from '@/lib/generated/prisma/enums';
 
 /**
  * Module augmentation for 'next-auth'.
@@ -18,6 +19,7 @@ declare module 'next-auth' {
       id: string;
       /** The user's email verification status. */
       emailVerified: Date | null;
+      role: UserRole;
     } & User; //... and the default fields (name, email, image)
   }
 
@@ -27,6 +29,7 @@ declare module 'next-auth' {
    */
   interface User {
     emailVerified: Date | null;
+    role: UserRole;
   }
 }
 
@@ -41,5 +44,6 @@ declare module 'next-auth/jwt' {
     id: string;
     /** The user's email verification status. */
     emailVerified: Date | null;
+    role: UserRole;
   }
 }

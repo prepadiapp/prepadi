@@ -16,9 +16,9 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { GoogleIcon } from '@/components/GoogleIcon';
-import { Alert, AlertDescription } from '@/components/ui/alert'; // Assuming shadcn setup for Alert
+import { Alert, AlertDescription } from '@/components/ui/alert'; 
 
-// A wrapper component to allow use of useSearchParams() inside a Suspense boundary
+
 function LoginAlerts() {
   const searchParams = useSearchParams();
   const verified = searchParams.get('verified');
@@ -86,7 +86,7 @@ export default function LoginPage() {
     setIsLoading(true);
     // This will redirect to Google, then back to our app
     signIn('google', {
-      callbackUrl: '/dashboard', // Where to send user after successful login
+      callbackUrl: '/dashboard', 
     });
   };
 

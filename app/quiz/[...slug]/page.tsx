@@ -103,22 +103,17 @@ async function getQuizData(slug: string[] | undefined) {
   }
 }
 
-/**
- * This is the main Server Component page for the quiz.
- */
+
 export default async function QuizPage({ params }: QuizPageProps) {
-  // --- THIS IS THE FIX ---
-  // We MUST await the params promise to resolve it,
-  // just as you did with your verify route.
+ 
   const resolvedParams = await params;
-  // --- END FIX ---
+
   
   console.log(
     `[QuizPage Server Component] Page loading. Received params:`,
     JSON.stringify(resolvedParams, null, 2)
   );
   
-  // We now pass the resolved slug to our data function
   const { data, error } = await getQuizData(resolvedParams.slug);
 
   // If there was an error, show an error message
@@ -134,8 +129,7 @@ export default async function QuizPage({ params }: QuizPageProps) {
     );
   }
 
-  // Handle the case where the slug was valid but data fetching failed
-  // (This is now redundant because getQuizData handles undefined slug)
+
   if (!data) {
     return (
       <div className="flex items-center justify-center min-h-screen flex-col">
@@ -145,7 +139,6 @@ export default async function QuizPage({ params }: QuizPageProps) {
     );
   }
 
-  // If data is loaded, pass it to the Client Component
   return (
     <QuizClient
       initialQuestions={data.questions}
