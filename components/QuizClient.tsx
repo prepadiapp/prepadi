@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-// --- Types ---
+
 interface QuizClientProps {
   initialQuestions: SanitizedQuestion[];
   quizDetails: {
@@ -168,7 +168,7 @@ export function QuizClient({ initialQuestions, quizDetails }: QuizClientProps) {
   }, [status, isSubmitting, answers, questions, startTime, router]);
 
 
-  // --- Render ---
+
 
   if (!isMounted || status === 'loading') {
     return (
@@ -201,7 +201,7 @@ export function QuizClient({ initialQuestions, quizDetails }: QuizClientProps) {
     );
   }
 
-  // --- Main Active Quiz UI ---
+
   const currentQuestion = questions[currentIndex];
   const currentAnswer = answers.get(currentQuestion.id);
   const totalQuestions = questions.length;

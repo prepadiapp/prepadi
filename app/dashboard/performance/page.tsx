@@ -10,8 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
-// --- Types ---
-// This is the full shape of our data from /api/performance
+
 interface PerformanceData {
   stats: {
     avgScore: number;
@@ -24,7 +23,7 @@ interface PerformanceData {
   history: any[]; // Using 'any' for simplicity, matches AttemptHistoryTable
 }
 
-// Reusable Stat Card from the wireframe
+
 function StatCard({ title, value, icon }: { title: string, value: string | number, icon: React.ReactNode }) {
   return (
     <Card>
@@ -39,13 +38,13 @@ function StatCard({ title, value, icon }: { title: string, value: string | numbe
   );
 }
 
-// --- Main Page Component ---
+
 export default function PerformancePage() {
   const [data, setData] = useState<PerformanceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Per wireframe, we can add filtering. For now, we fetch all.
+  
   const [timeFilter, setTimeFilter] = useState('all');
 
   useEffect(() => {
@@ -53,7 +52,6 @@ export default function PerformancePage() {
       setLoading(true);
       setError(null);
       try {
-        // We can add ?filter=week to this in the future
         const response = await fetch('/api/performance');
         if (!response.ok) {
           throw new Error('Failed to fetch performance data.');
@@ -67,7 +65,7 @@ export default function PerformancePage() {
       }
     }
     fetchData();
-  }, [timeFilter]); // Re-fetch if filter changes
+  }, [timeFilter]); 
 
   if (loading) {
     return (
@@ -107,7 +105,7 @@ export default function PerformancePage() {
      )
   }
 
-  // --- Main Dashboard ---
+
   return (
     <div className="container mx-auto max-w-5xl p-4 md:p-8 space-y-8">
       <header className="flex flex-col md:flex-row justify-between md:items-center gap-4">
@@ -128,7 +126,7 @@ export default function PerformancePage() {
       </header>
 
       <main className="space-y-6">
-        {/* Top 4 Stat Cards from wireframe */}
+        
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <StatCard title="Average Score" value={`${data.stats.avgScore}%`} icon={<BarChart2 className="w-4 h-4 text-muted-foreground" />} />
           <StatCard title="Best Score" value={`${data.stats.bestScore}%`} icon={<ArrowUp className="w-4 h-4 text-muted-foreground" />} />

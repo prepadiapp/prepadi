@@ -10,7 +10,7 @@ const ACCESS_TOKEN = process.env.QBOARD_ACCESS_TOKEN;
  * HARDCODED availability map based on the Qboard docs.
  * This is our "source of truth" for what this adapter can fetch.
  * We map the API name (e.g., 'english') to its available years.
- * NOTE: The doc is unclear if these years are for UTME, WASSCE, or both.
+ * The doc is unclear if these years are for UTME, WASSCE, or both.
  * We will assume for now they are valid for ANY exam type we map.
  */
 const QBOARD_AVAILABILITY = {

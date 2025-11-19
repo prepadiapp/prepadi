@@ -29,49 +29,65 @@ export function ExamSelector({ exams }: ExamSelectorProps) {
   const [years, setYears] = useState<number[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(true);
+  const [isLoadingYears, setIsLoadingYears] = useState(true);
+
   // Fetch subjects when an exam is selected
   useEffect(() => {
+    setIsLoadingSubjects(true);
+    // Fetch all subjects without any examId
+    fetch('/api/subjects')
+      .then((res) => res.json())
+      .then((data) => {
+        setSubjects(data);
+      })
+      .catch((err) => console.error(err))
+      .finally(() => setIsLoadingSubjects(false));
+  }, []); // Empty array means this runs ONCE on mount
+
+
+  useEffect(() => {
     if (selectedExam) {
-      setIsLoading(true);
-      setSubjects([]);
+      // Just reset the selections, don't re-fetch subjects
+      setStep('subject');
       setSelectedSubject(null);
       setYears([]);
       setSelectedYear(null);
-
-      fetch(`/api/subjects?examId=${selectedExam.id}`)
-        .then((res) => res.json())
-        .then((data) => {
-          setSubjects(data);
-          setStep('subject');
-        })
-        .catch((err) => console.error(err))
-        .finally(() => setIsLoading(false));
     }
   }, [selectedExam]);
 
-  // Fetch years when a subject is selected
   useEffect(() => {
     if (selectedExam && selectedSubject) {
-      setIsLoading(true);
+      setIsLoadingYears(true);
       setYears([]);
       setSelectedYear(null);
 
       fetch(`/api/years?examId=${selectedExam.id}&subjectId=${selectedSubject.id}`)
-        .then((res) => res.json())
+        .then((res) => {
+          if (!res.ok) {
+            // If the response is not 200, throw an error
+            throw new Error(`API failed with status ${res.status}`);
+          }
+          return res.json();
+        })
         .then((data) => {
           setYears(data);
           setStep('year');
         })
-        .catch((err) => console.error(err))
-        .finally(() => setIsLoading(false));
+        .catch((err) => {
+         
+          console.error("Failed to fetch years:", err);
+          
+          setStep('year');
+        })
+        .finally(() => setIsLoadingYears(false));
     }
   }, [selectedSubject, selectedExam]);
   
-  // Handler for the final "Start Exam" button
+  
   const handleStartExam = () => {
     if (!selectedExam || !selectedSubject || !selectedYear) return;
     
-    // We will build this page in Phase 2.C
     const examSlug = selectedExam.shortName.toLowerCase();
     const subjectSlug = selectedSubject.name.toLowerCase().replace(/\s+/g, '-');
     

@@ -1,14 +1,13 @@
 import { create } from 'zustand';
 import { Question, Option } from '@/lib/generated/prisma/client';
 
-// This is the "sanitized" question type our client will receive
-// It's the same as the one we defined in the /api/quiz/start route
+
 export type SanitizedOption = Omit<Option, 'isCorrect' | 'questionId'>;
 export type SanitizedQuestion = Omit<Question, 'explanation' | 'sourceApi' | 'subjectId' | 'examId'> & {
   options: SanitizedOption[];
 };
 
-// This defines the "shape" of our store's state
+
 interface QuizState {
   questions: SanitizedQuestion[];
   answers: Map<string, string>; // Maps questionId -> selectedOptionId
@@ -37,7 +36,6 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   startTime: null,
   timeLimitMinutes: 45, // Default 45 minutes
 
-  // --- Actions ---
   
   /**
    * Initializes the quiz with questions and starts the timer.

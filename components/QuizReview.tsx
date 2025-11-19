@@ -5,8 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import { Prisma } from '@/lib/generated/prisma'; // Corrected path
 
-// --- Define the complex data type we expect from the server ---
-// This is created by Prisma's `include` query
+
 type UserAnswerWithDetails = Prisma.UserAnswerGetPayload<{
   include: {
     question: {

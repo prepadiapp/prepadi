@@ -1,31 +1,26 @@
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
+import { getAuthSession } from '@/lib/auth';
+import { UserRole } from '@/lib/generated/prisma'; // Corrected path
 
-// This API route fetches subjects for a specific exam
+/**
+ * GET: Fetch all subjects
+ * Subjects are universal, so we just return all of them.
+ */
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const examId = searchParams.get('examId');
-
-    if (!examId) {
-      return new NextResponse('Missing examId', { status: 400 });
+    const session = await getAuthSession();
+    if (!session?.user?.id) {
+      return new NextResponse('Unauthorized', { status: 401 });
     }
-
-    // Find the exam and include its related subjects
-    const examWithSubjects = await prisma.exam.findUnique({
-      where: { id: examId },
-      include: {
-        subjects: {
-          orderBy: { name: 'asc' },
-        },
-      },
+    
+    // Notice: We no longer care about the examId
+    const allSubjects = await prisma.subject.findMany({
+      orderBy: { name: 'asc' },
     });
 
-    if (!examWithSubjects) {
-      return new NextResponse('Exam not found', { status: 404 });
-    }
-
-    return NextResponse.json(examWithSubjects.subjects);
+    return NextResponse.json(allSubjects);
+    
   } catch (error) {
     console.error('[SUBJECTS_GET_ERROR]', error);
     return new NextResponse('Internal Server Error', { status: 500 });
