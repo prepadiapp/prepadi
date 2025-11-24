@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { UserRole } from '@/lib/generated/prisma/enums';
+import { UserRole } from '@/lib/generated/prisma/enums'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -16,20 +16,35 @@ import {
 import {
   Pagination,
   PaginationContent,
-  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
+  PaginationEllipsis
 } from '@/components/ui/pagination';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle, Loader2, Search, CheckCircle, Shield, Users, BarChart, Percent, Building } from 'lucide-react';
+import { AlertCircle, Loader2, Search, CheckCircle, Shield, Users, BarChart, Activity, TrendingUp, UserPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useDebounce } from '@/hooks/useDebounce';
 import { generatePaginationRange } from '@/lib/pagination';
-import { AdminAttemptChart } from '@/components/admin/AdminAttemptChart'; 
+import { AdminAttemptChart } from '@/components/admin/AdminAttemptChart';
+import { AdminUserChart } from '@/components/admin/AdminUserChart';
 
-// --- Types ---
+// --- Updated Types ---
+type AnalyticsData = {
+  stats: {
+    totalStudents: number;
+    totalOrgs: number;
+    activeUsers24h: number;
+    weeklyAvgDailyMinutes: number;
+    weeklyActiveUsers: number;
+  };
+  charts: {
+    growth: { name: string; count: number }[];
+    activity: { name: string; count: number }[];
+  };
+};
+
 type UserData = {
   id: string;
   name: string | null;
@@ -40,19 +55,7 @@ type UserData = {
   attempts: number;
 };
 
-type AnalyticsStats = {
-  totalStudents: number;
-  totalOrgs: number;
-  totalAttempts: number;
-  avgScore: number;
-};
-type ChartData = {
-  name: string;
-  count: number;
-};
-
-// Reusable Stat Card
-function StatCard({ title, value, icon }: { title: string, value: string | number, icon: React.ReactNode }) {
+function StatCard({ title, value, subtitle, icon }: { title: string, value: string | number, subtitle?: string, icon: React.ReactNode }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -61,29 +64,27 @@ function StatCard({ title, value, icon }: { title: string, value: string | numbe
       </CardHeader>
       <CardContent>
         <div className="text-2xl font-bold">{value}</div>
+        {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
       </CardContent>
     </Card>
   );
 }
 
-// --- Main Page Component ---
 export default function UserAnalyticsPage() {
-  // State for data
-  const [stats, setStats] = useState<AnalyticsStats | null>(null);
-  const [chartData, setChartData] = useState<ChartData[]>([]);
+  // Data States
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [users, setUsers] = useState<UserData[]>([]);
   
+  // UI States
   const [searchTerm, setSearchTerm] = useState('');
-  
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
-
+  // Fetch Data
   useEffect(() => {
     const fetchPageData = async () => {
       setLoading(true);
@@ -92,20 +93,17 @@ export default function UserAnalyticsPage() {
         params.set('page', String(currentPage));
         if (debouncedSearchTerm) params.set('q', debouncedSearchTerm);
 
-        // Fetch both analytics and the user list
-        const [statsRes, usersRes] = await Promise.all([
+        const [analyticsRes, usersRes] = await Promise.all([
           fetch('/api/admin/analytics/overview'),
           fetch(`/api/admin/users?${params.toString()}`),
         ]);
 
-        if (!statsRes.ok) throw new Error('Failed to fetch analytics');
-        if (!usersRes.ok) throw new Error('Failed to fetch users');
+        if (!analyticsRes.ok || !usersRes.ok) throw new Error('Failed to fetch data');
 
-        const statsData = await statsRes.json();
+        const analyticsData = await analyticsRes.json();
         const usersData = await usersRes.json();
         
-        setStats(statsData.stats);
-        setChartData(statsData.chartData);
+        setAnalytics(analyticsData);
         setUsers(usersData.users);
         setTotalPages(usersData.totalPages);
         
@@ -118,12 +116,6 @@ export default function UserAnalyticsPage() {
     fetchPageData();
   }, [debouncedSearchTerm, currentPage]);
 
-  // Reset to page 1 when search term changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [debouncedSearchTerm]);
-
-
   const handlePageChange = (page: number) => {
     if (page > 0 && page <= totalPages) {
       setCurrentPage(page);
@@ -133,61 +125,112 @@ export default function UserAnalyticsPage() {
   const paginationRange = generatePaginationRange(currentPage, totalPages);
 
 
+  // --- Render ---
   return (
-    <section className="space-y-6">
-      <h1 className="text-3xl font-bold">User Analytics</h1>
+    <section className="space-y-8">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">User Analytics</h1>
+        <span className="text-sm text-muted-foreground">User Behavior & Growth</span>
+      </div>
       
+      {/* Loading / Error */}
       {loading && (
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       )}
       {error && !loading && (
-        <Alert variant="destructive" className="m-4">
+        <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      {/* Main Content (when not loading) */}
-      {!loading && !error && stats && (
+      {/* Main Content */}
+      {!loading && !error && analytics && (
         <>
-          {/* Stat Cards */}
+          {/* --- DEEP METRICS ROW --- */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <StatCard title="Total Students" value={stats.totalStudents} icon={<Users className="w-4 h-4 text-muted-foreground" />} />
-            <StatCard title="Total Orgs" value={stats.totalOrgs} icon={<Building className="w-4 h-4 text-muted-foreground" />} />
-            <StatCard title="Total Attempts" value={stats.totalAttempts} icon={<BarChart className="w-4 h-4 text-muted-foreground" />} />
-            <StatCard title="Avg. Score" value={`${stats.avgScore}%`} icon={<Percent className="w-4 h-4 text-muted-foreground" />} />
+            {/* 1. Active Users */}
+            <StatCard 
+              title="Active Users (24h)" 
+              value={analytics.stats.activeUsers24h} 
+              subtitle="Unique logins today"
+              icon={<Activity className="w-4 h-4 text-blue-500" />} 
+            />
+            
+            {/* 2. Engagement */}
+            <StatCard 
+              title="Engagement" 
+              value={`${analytics.stats.weeklyAvgDailyMinutes}m / day`} 
+              subtitle={`${analytics.stats.weeklyActiveUsers} active users (7d)`}
+              icon={<TrendingUp className="w-4 h-4 text-green-500" />} 
+            />
+
+            {/* 3. Total Students */}
+            <StatCard 
+              title="Total Students" 
+              value={analytics.stats.totalStudents} 
+              icon={<Users className="w-4 h-4 text-muted-foreground" />} 
+            />
+
+            {/* 4. Total Orgs */}
+            <StatCard 
+              title="Organizations" 
+              value={analytics.stats.totalOrgs} 
+              icon={<Shield className="w-4 h-4 text-purple-500" />} 
+            />
           </div>
 
-          {/* Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quiz Attempts (Last 30 Days)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {chartData.length > 0 ? (
-                <AdminAttemptChart data={chartData} />
-              ) : (
-                <div className="flex items-center justify-center h-96 text-muted-foreground">
-                  No quiz activity to display.
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {/* --- CHARTS ROW --- */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Chart 1: User Growth (Line) */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-muted-foreground" />
+                  User Growth (30 Days)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {analytics.charts.growth.length > 0 ? (
+                  <AdminUserChart data={analytics.charts.growth} />
+                ) : (
+                  <div className="h-80 flex items-center justify-center text-muted-foreground">No data</div>
+                )}
+              </CardContent>
+            </Card>
 
-          {/* User List Table */}
+            {/* Chart 2: Activity/Attempts (Bar) */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart className="w-4 h-4 text-muted-foreground" />
+                  Quiz Activity (30 Days)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {analytics.charts.activity.length > 0 ? (
+                  <AdminAttemptChart data={analytics.charts.activity} />
+                ) : (
+                  <div className="h-80 flex items-center justify-center text-muted-foreground">No data</div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* --- USER TABLE --- */}
           <Card>
             <CardHeader>
-              <CardTitle>All Users</CardTitle>
+              <CardTitle>User List</CardTitle>
               <div className="max-w-md pt-4">
                 <div className="relative">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="search"
                     type="search"
-                    placeholder="Search by name or email..."
+                    placeholder="Search users..."
                     className="pl-8"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -207,93 +250,66 @@ export default function UserAnalyticsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {users.length === 0 ? (
+                  {users.length === 0 ? (
                     <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center">
+                      <TableCell colSpan={5} className="h-24 text-center">
                         No users found.
-                        </TableCell>
+                      </TableCell>
                     </TableRow>
-                    ) : (
+                  ) : (
                     users.map((user) => (
-                        <TableRow key={user.id}>
+                      <TableRow key={user.id}>
                         <TableCell>
-                            <div className="font-medium">{user.name || 'N/A'}</div>
-                            <div className="text-xs text-muted-foreground">{user.email}</div>
+                          <div className="font-medium">{user.name || 'User'}</div>
+                          <div className="text-xs text-muted-foreground">{user.email}</div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
-                            <Badge variant={user.role === 'ADMIN' ? 'default' : 'secondary'}>
+                          <Badge variant={user.role === 'ADMIN' ? 'default' : 'secondary'}>
                             {user.role}
-                            </Badge>
+                          </Badge>
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
-                            {user.verified ? (
+                          {user.verified ? (
                             <span className="flex items-center text-xs text-green-600">
-                                <CheckCircle className="w-3 h-3 mr-1" />
-                                Verified
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                              Verified
                             </span>
-                            ) : (
+                          ) : (
                             <span className="flex items-center text-xs text-yellow-600">
-                                <AlertCircle className="w-3 h-3 mr-1" />
-                                Pending
+                              <AlertCircle className="w-3 h-3 mr-1" />
+                              Pending
                             </span>
-                            )}
+                          )}
                         </TableCell>
-                        <TableCell className="hidden md:table-cell">{user.attempts}</TableCell>
+                        <TableCell className="hidden md:table-cell font-mono">{user.attempts}</TableCell>
                         <TableCell>{new Date(user.joined).toLocaleDateString()}</TableCell>
-                        </TableRow>
+                      </TableRow>
                     ))
-                    )}
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
           </Card>
           
-          {/* Pagination Controls */}
-          {!loading && !error && totalPages > 1 && (
+          {/* Pagination (unchanged logic) */}
+          {totalPages > 1 && (
             <Pagination>
-                <PaginationContent>
-                    
-                    <PaginationItem>
-                    <PaginationPrevious
-                        href="#"
-                        onClick={(e) => { e.preventDefault(); handlePageChange(currentPage - 1); }}
-                        aria-disabled={currentPage === 1}
-                        className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                    />
-                    </PaginationItem>
-                    
-                    
-                    {paginationRange.map((page, index) => (
-                    page === '...' ? (
-                        <PaginationItem key={index}>
-                        <PaginationEllipsis />
-                        </PaginationItem>
-                    ) : (
-                        <PaginationItem key={index}>
-                        <PaginationLink
-                            href="#"
-                            onClick={(e) => { e.preventDefault(); handlePageChange(page as number); }}
-                            isActive={currentPage === page}
-                            className="cursor-pointer"
-                        >
-                            {page}
-                        </PaginationLink>
-                        </PaginationItem>
-                    )
-                    ))}
-
-                  
-                    <PaginationItem>
-                    <PaginationNext
-                        href="#"
-                        onClick={(e) => { e.preventDefault(); handlePageChange(currentPage + 1); }}
-                        aria-disabled={currentPage === totalPages}
-                        className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                    />
-                    </PaginationItem>
-                </PaginationContent>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious href="#" onClick={(e) => { e.preventDefault(); handlePageChange(currentPage - 1); }} />
+                </PaginationItem>
+                {paginationRange.map((page, i) => (
+                   page === '...' ? <PaginationItem key={i}><PaginationEllipsis /></PaginationItem> :
+                   <PaginationItem key={i}>
+                     <PaginationLink href="#" isActive={currentPage === page} onClick={(e) => { e.preventDefault(); handlePageChange(page as number); }}>{page}</PaginationLink>
+                   </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext href="#" onClick={(e) => { e.preventDefault(); handlePageChange(currentPage + 1); }} />
+                </PaginationItem>
+              </PaginationContent>
             </Pagination>
-            )}
+          )}
         </>
       )}
     </section>

@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import { Montserrat } from 'next/font/google';
 import './globals.css';
 import Providers from '@/components/Providers';
+import { UserActivityTracker } from '@/components/UserActivityTracker'; 
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -25,6 +26,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={montserrat.className}>
         <Providers>
+          <UserActivityTracker />
           <main className="min-h-screen bg-gray-50">
             {children}
           </main>

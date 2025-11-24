@@ -11,31 +11,55 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle, BarChart, Book, FileQuestion, Loader2, Users } from 'lucide-react';
+import { 
+  AlertCircle, 
+  BarChart, 
+  Book, 
+  Clock, 
+  FileQuestion, 
+  Loader2, 
+  Users, 
+  Activity, 
+  Zap, 
+  TrendingUp 
+} from 'lucide-react';
 import { AdminUserChart } from '@/components/admin/AdminUserChart';
 
-
-interface AdminStats {
-  totalUsers: number;
-  totalQuestions: number;
-  totalExams: number;
-  totalSubjects: number;
-  totalAttempts: number;
+// --- Types ---
+interface DashboardData {
+  insights: {
+    logins24h: number;
+    avgExamsPerUser: string;
+    avgExamTimeMinutes: number;
+    weeklyActiveUsers: number;
+    weeklyAvgDailyMinutes: number;
+  };
+  totals: {
+    totalUsers: number;
+    totalQuestions: number;
+    totalExams: number;
+    totalSubjects: number;
+    totalAttempts: number;
+  };
+  recentUsers: {
+    id: string;
+    name: string | null;
+    email: string;
+    createdAt: string;
+  }[];
+  chartData: {
+    name: string;
+    count: number;
+  }[];
 }
 
-interface RecentUser {
-  id: string;
-  name: string | null;
-  email: string;
-  createdAt: Date;
-}
-type ChartData = {
-  name: string;
-  count: number;
-};
-
-
-function StatCard({ title, value, icon }: { title: string, value: string | number, icon: React.ReactNode }) {
+function StatCard({ title, value, subtitle, icon, trend }: { 
+  title: string, 
+  value: string | number, 
+  subtitle?: string, 
+  icon: React.ReactNode,
+  trend?: 'neutral' // We can add positive/negative later
+}) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -44,16 +68,14 @@ function StatCard({ title, value, icon }: { title: string, value: string | numbe
       </CardHeader>
       <CardContent>
         <div className="text-2xl font-bold">{value}</div>
+        {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
       </CardContent>
     </Card>
   );
 }
 
-// --- Main Page Component ---
 export default function AdminDashboardPage() {
-  const [stats, setStats] = useState<AdminStats | null>(null);
-  const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
-  const [chartData, setChartData] = useState<ChartData[]>([]);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,12 +83,9 @@ export default function AdminDashboardPage() {
     async function loadStats() {
       try {
         const response = await fetch('/api/admin/stats');
-        if (!response.ok) {
-          throw new Error('Failed to fetch admin stats');
-        }
-        const data = await response.json();
-        setStats(data.stats);
-        setRecentUsers(data.recentUsers);
+        if (!response.ok) throw new Error('Failed to fetch stats');
+        const jsonData = await response.json();
+        setData(jsonData);
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -94,40 +113,90 @@ export default function AdminDashboardPage() {
     );
   }
 
-  if (!stats) {
-    return <p>No data available.</p>;
-  }
+  if (!data) return null;
 
   return (
-    <section className="space-y-6">
-      <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Users" value={stats.totalUsers} icon={<Users className="w-4 h-4 text-muted-foreground" />} />
-        <StatCard title="Total Questions" value={stats.totalQuestions} icon={<FileQuestion className="w-4 h-4 text-muted-foreground" />} />
-        <StatCard title="Total Exams" value={stats.totalExams} icon={<Book className="w-4 h-4 text-muted-foreground" />} />
-        <StatCard title="Total Attempts" value={stats.totalAttempts} icon={<BarChart className="w-4 h-4 text-muted-foreground" />} />
+    <section className="space-y-8">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+        <span className="text-sm text-muted-foreground">Overview & Analytics</span>
       </div>
 
-      {/* Main content grid (Charts + Recent Activity) */}
+      {/* --- SECTION 1: PRIORITY INSIGHTS (New Specs) --- */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold flex items-center">
+          <Zap className="w-5 h-5 mr-2 text-yellow-500" />
+          Engagement Insights
+        </h2>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          
+          {/* Active Users 24h */}
+          <StatCard 
+            title="Active Users (24h)" 
+            value={data.insights.logins24h} 
+            subtitle="Unique logins today"
+            icon={<Users className="w-4 h-4 text-blue-500" />} 
+          />
+
+          {/* Weekly Engagement */}
+          <StatCard 
+            title="Weekly Engagement" 
+            value={`${data.insights.weeklyAvgDailyMinutes}m / day`} 
+            subtitle={`${data.insights.weeklyActiveUsers} users active this week`}
+            icon={<Activity className="w-4 h-4 text-green-500" />} 
+          />
+
+          {/* Avg Exams Per User */}
+          <StatCard 
+            title="Avg. Exams Taken" 
+            value={data.insights.avgExamsPerUser} 
+            subtitle={`Across ${data.totals.totalUsers} students`}
+            icon={<FileQuestion className="w-4 h-4 text-orange-500" />} 
+          />
+
+          {/* Avg Duration */}
+          <StatCard 
+            title="Avg. Exam Duration" 
+            value={`${data.insights.avgExamTimeMinutes} min`} 
+            subtitle="Average completion time"
+            icon={<Clock className="w-4 h-4 text-purple-500" />} 
+          />
+        </div>
+      </div>
+
+      {/* --- SECTION 2: PLATFORM TOTALS (Old Specs) --- */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold flex items-center">
+          <TrendingUp className="w-5 h-5 mr-2 text-blue-500" />
+          Platform Health
+        </h2>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <StatCard title="Total Users" value={data.totals.totalUsers} icon={<Users className="w-4 h-4 text-muted-foreground" />} />
+          <StatCard title="Total Questions" value={data.totals.totalQuestions} icon={<FileQuestion className="w-4 h-4 text-muted-foreground" />} />
+          <StatCard title="Total Exams" value={data.totals.totalExams} icon={<Book className="w-4 h-4 text-muted-foreground" />} />
+          <StatCard title="Total Attempts" value={data.totals.totalAttempts} icon={<BarChart className="w-4 h-4 text-muted-foreground" />} />
+        </div>
+      </div>
+
+      {/* --- SECTION 3: CHARTS & LISTS --- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Side: Chart */}
+        {/* User Activity Chart */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>User Activity (Chart)</CardTitle>
+            <CardTitle>New Signups (Last 30 Days)</CardTitle>
           </CardHeader>
-          <CardContent className="h-96">
-            {chartData.length > 0 ? (
-              <AdminUserChart data={chartData} />
+          <CardContent>
+            {data.chartData.length > 0 ? (
+              <AdminUserChart data={data.chartData} />
             ) : (
               <div className="flex items-center justify-center h-96 text-muted-foreground">
-                No user activity to display.
+                No activity data yet.
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Right Side: Recent Signups */}
+        {/* Recent Signups List */}
         <Card>
           <CardHeader>
             <CardTitle>Recent Signups</CardTitle>
@@ -137,14 +206,14 @@ export default function AdminDashboardPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>User</TableHead>
-                  <TableHead>Date</TableHead>
+                  <TableHead>Joined</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recentUsers.map(user => (
+                {data.recentUsers.map(user => (
                   <TableRow key={user.id}>
                     <TableCell>
-                      <div className="font-medium">{user.name || 'N/A'}</div>
+                      <div className="font-medium">{user.name || 'User'}</div>
                       <div className="text-xs text-muted-foreground">{user.email}</div>
                     </TableCell>
                     <TableCell>

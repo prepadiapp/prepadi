@@ -24,6 +24,8 @@ model User {
   role            UserRole      @default(STUDENT) // Uses the enum below
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+
+  lastLogin       DateTime?     @default(now())
   
   // Relations
   organizationId  String?
@@ -92,6 +94,16 @@ model Subject {
   quizAttempts QuizAttempt[]
 }
 
+// For grouping questions under specific instructions or passages
+model Section {
+  id          String     @id @default(cuid())
+  instruction String     @db.Text // e.g. "In each of the following sentences..."
+  passage     String?    @db.Text // Optional: For reading comprehension
+  
+  // Relations
+  questions   Question[]
+}
+
 model Question {
   id          String    @id @default(cuid())
   text        String    @db.Text
@@ -99,13 +111,19 @@ model Question {
   sourceApi   String?
   year        Int
 
+  type        QuestionType @default(OBJECTIVE)
+
   // Relations
   subjectId   String
   subject     Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   
-  // NEW: Relation to Exam
+  // Relation to Exam
   examId      String
   exam        Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  // Section ---
+  sectionId   String?
+  section     Section?  @relation(fields: [sectionId], references: [id])
   
   options     Option[]
 
@@ -183,5 +201,10 @@ model UserAnswer {
 enum UserRole {
   STUDENT
   ORGANIZATION
-  ADMIN // Replaced SUPER_ADMIN for simplicity
+  ADMIN 
+}
+
+enum QuestionType {
+  OBJECTIVE // Multiple Choice
+  THEORY    // Essay / Open Answer
 }

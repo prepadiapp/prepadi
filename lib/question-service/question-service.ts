@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { Exam, Subject, Question, Option } from '@/lib/generated/prisma/client';
+import { Exam, Subject, Question, Option, QuestionType } from '@/lib/generated/prisma/client';
 import { IQuestionAdapter, StandardizedQuestion, QuestionWithOptions } from './types';
 import { QboardAdapter } from './adapters/qboard-adapter';
 // Import other adapters here in the future
@@ -26,14 +26,17 @@ class QuestionService {
     console.log(`[QuestionService] Attemping to get questions for exam: ${examId}, subject: ${subjectId}, year: ${year}`);
 
     // 1. Try to fetch from our local database first
+    // We ONLY fetch "general" questions (organizationId: null)
     const localQuestions = await prisma.question.findMany({
       where: {
         examId,
         subjectId,
         year,
+        organizationId: null, 
       },
       include: {
         options: true,
+        section: true, // Include section data
       },
     });
 
@@ -53,7 +56,7 @@ class QuestionService {
 
     // 3. Save the new questions to our DB
     console.log(`[QuestionService] Found ${fetchedQuestions.length} questions. Saving to DB...`);
-    const newDbQuestions = await this.saveQuestionsToDb(fetchedQuestions);
+    const newDbQuestions = await this.bulkCreate(fetchedQuestions);
     console.log(`[QuestionService] Successfully saved new questions to DB.`);
 
     return newDbQuestions;
@@ -66,9 +69,9 @@ class QuestionService {
     console.log(`[Service] Getting available years for exam: ${examId}, subject: ${subjectId}`);
     
     // 1. Get years from our local DB (questions we've already cached)
-    // We create the promise but don't await it yet.
+    // Only look for general questions
     const localYearsQuery = prisma.question.findMany({
-      where: { examId, subjectId },
+      where: { examId, subjectId, organizationId: null },
       select: { year: true },
       distinct: ['year'],
     });
@@ -76,7 +79,7 @@ class QuestionService {
     // 2. Get years from our adapters
     const adapterYears = this.fetchAvailableYearsFromAdapters(examId, subjectId);
 
-    // 3. Await both promises in parallel (this is efficient)
+    // 3. Await both promises in parallel
     const [localYearsResult, adapterYearsResult] = await Promise.all([
       localYearsQuery,
       adapterYears,
@@ -150,19 +153,76 @@ class QuestionService {
 
   /**
    * Saves standardized questions to our database in a single transaction.
+   * PUBLIC: Can be called by the Bulk Upload API directly.
    */
-  private async saveQuestionsToDb(
+  public async bulkCreate(
     questions: StandardizedQuestion[]
   ): Promise<QuestionWithOptions[]> {
     
+    // 1. Handle Sections (Find or Create)
+    // Filter out null sections and get unique names
+    const uniqueSectionNames = Array.from(new Set(
+      questions
+        .map(q => q.sectionName)
+        .filter((name): name is string => !!name)
+    ));
+
+    // Map to store "Section Name" -> "Section ID"
+    const sectionMap = new Map<string, string>();
+
+    for (const name of uniqueSectionNames) {
+      // Check if section exists by instruction text
+      let section = await prisma.section.findFirst({
+        where: { instruction: name }
+      });
+
+      if (!section) {
+        section = await prisma.section.create({
+          data: { instruction: name }
+        });
+      }
+      sectionMap.set(name, section.id);
+    }
+
+    // Gather all unique tags from the entire batch
+    const allTags = questions.flatMap(q => q.tags || []);
+    const uniqueTags = Array.from(new Set(allTags));
+
+    // Upsert all tags (ensure they exist)
+    // We do this in a transaction/loop to be safe
+    for (const tagName of uniqueTags) {
+      await prisma.tag.upsert({
+        where: { name: tagName },
+        update: {},
+        create: { name: tagName },
+      });
+    }
+
+    // Fetch all tag IDs so we can link them
+    const dbTags = await prisma.tag.findMany({
+      where: { name: { in: uniqueTags } },
+      select: { id: true, name: true }
+    });
+    const tagMap = new Map(dbTags.map(t => [t.name, t.id]));
+
+    // 2. Create Questions
     const createPromises = questions.map((q) => {
+      const sectionId = q.sectionName ? sectionMap.get(q.sectionName) : undefined;
+
+      const tagIds = (q.tags || [])
+        .map(name => tagMap.get(name))
+        .filter(id => !!id) as string[];
+
       return prisma.question.create({
         data: {
           text: q.text,
           explanation: q.explanation,
           year: q.year,
+          type: q.type, // Save OBJECTIVE or THEORY
           examId: q.dbExamId,
           subjectId: q.dbSubjectId,
+          sectionId: sectionId, // Link to Section
+          organizationId: null, // IMPORTANT: All these are general questions
           options: {
             createMany: {
               data: q.options.map(opt => ({
@@ -171,9 +231,13 @@ class QuestionService {
               })),
             },
           },
+          tags: {
+            connect: tagIds.map(id => ({ id })),
+          }
         },
         include: {
           options: true,
+          section: true, // Return the section too
         },
       });
     });

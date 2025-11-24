@@ -4,7 +4,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
-import { UserRole } from '@/lib/generated/prisma/client';
+import { UserRole } from '@/lib/generated/prisma/enums';
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -65,6 +65,18 @@ export const authOptions: NextAuthOptions = {
             emailVerified: new Date(),
           },
         });
+      }
+    },
+
+    async signIn({ user }) {
+      try {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { lastLogin: new Date() },
+        });
+      } catch (error) {
+        console.error("Error updating lastLogin:", error);
+        // Don't block login if this fails
       }
     },
   },

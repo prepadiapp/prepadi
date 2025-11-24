@@ -161,25 +161,27 @@ export class QboardAdapter implements IQuestionAdapter {
   ): StandardizedQuestion[] {
     
     return apiQuestions.map((q) => {
-      // Create the options array first
       const options = [
         { text: q.option.a, isCorrect: q.answer === 'a' },
         { text: q.option.b, isCorrect: q.answer === 'b' },
         { text: q.option.c, isCorrect: q.answer === 'c' },
         { text: q.option.d, isCorrect: q.answer === 'd' },
       ];
-      
-      // Handle 'e' if it exists (some exams have 5 options)
       if (q.option.e) {
         options.push({ text: q.option.e, isCorrect: q.answer === 'e' });
       }
 
+      // API "solution" maps to our "explanation"
+      // API "section" maps to our "sectionName"
+      
       const standardized: StandardizedQuestion = {
         text: q.question,
-        explanation: q.solution || null,
-        year: year, // Use the year we requested
+        explanation: q.solution || null, 
+        year: year,
         dbExamId: exam.id,
         dbSubjectId: subject.id,
+        type: QuestionType.OBJECTIVE, // Qboard API is purely Objective
+        sectionName: q.section || null,
         options: options,
       };
 
