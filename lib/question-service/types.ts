@@ -1,4 +1,4 @@
-import { Question, Option, Exam, Subject } from '@/lib/generated/prisma/client'; 
+import { Question, Option, Exam, Subject, QuestionType } from '@/lib/generated/prisma/client'; 
 
 /**
  * A helper type that represents a full question with its options.
@@ -16,9 +16,14 @@ export type StandardizedQuestion = {
   text: string;
   explanation: string | null;
   year: number;
+  tags?: string[];
   // This is how we link it to our DB
   dbExamId: string;
   dbSubjectId: string;
+
+  type: QuestionType;
+  sectionName?: string | null;
+
   // The options for this question
   options: {
     text: string;

@@ -1,43 +1,35 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { UserRole } from '@/lib/generated/prisma/enums'; 
+import { UserRole } from '@/lib/generated/prisma/enums';
 import { NextResponse } from 'next/server';
 
-/**
- * A helper function to process quiz attempts into daily counts
- * for the last 30 days.
- */
-function processAttemptData(attempts: { createdAt: Date }[]) {
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-  // Initialize a map with 0 counts for the last 30 days
+// Helper: Process data for charts
+function processChartData(data: { createdAt: Date }[], days = 30) {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - days);
   const dailyCounts = new Map<string, number>();
-  for (let i = 0; i < 30; i++) {
+
+  // Initialize map
+  for (let i = 0; i < days; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const day = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     dailyCounts.set(day, 0);
   }
 
-  // Count the attempts
-  for (const attempt of attempts) {
-    if (attempt.createdAt >= thirtyDaysAgo) {
-      const day = attempt.createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const count = dailyCounts.get(day) || 0;
-      dailyCounts.set(day, count + 1);
+  // Fill map
+  for (const item of data) {
+    if (item.createdAt >= cutoffDate) {
+      const day = item.createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      dailyCounts.set(day, (dailyCounts.get(day) || 0) + 1);
     }
   }
 
-  // Convert map to array and reverse to get chronological order
   return Array.from(dailyCounts.entries())
     .map(([name, count]) => ({ name, count }))
     .reverse();
 }
 
-/**
- * GET: Fetches aggregate analytics for the User Analytics page
- */
 export async function GET(request: Request) {
   const session = await getAuthSession();
   if (!session?.user || session.user.role !== UserRole.ADMIN) {
@@ -45,43 +37,69 @@ export async function GET(request: Request) {
   }
 
   try {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // --- Date Windows ---
+    const now = new Date();
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // 1. Fetch data in parallel
+    // --- Parallel Data Fetching ---
     const [
       totalStudents,
       totalOrgs,
-      totalAttempts,
-      recentAttempts, // For the main chart
-      avgScoreData
+      logins24h, // Active Users (24h)
+      recentEngagement, // For Weekly Engagement Calc
+      recentSignups, // For User Growth Chart
+      recentAttempts // For Attempts Chart
     ] = await prisma.$transaction([
       prisma.user.count({ where: { role: 'STUDENT' } }),
       prisma.user.count({ where: { role: 'ORGANIZATION' } }),
-      prisma.quizAttempt.count(),
+      prisma.user.count({ where: { lastLogin: { gte: twentyFourHoursAgo } } }),
+      
+      // Engagement: Attempts in last 7 days
+      prisma.quizAttempt.findMany({
+        where: { createdAt: { gte: sevenDaysAgo } },
+        select: { userId: true, timeTaken: true }
+      }),
+
+      // Growth: Signups in last 30 days
+      prisma.user.findMany({
+        where: { createdAt: { gte: thirtyDaysAgo } },
+        select: { createdAt: true }
+      }),
+
+      // Activity: Attempts in last 30 days
       prisma.quizAttempt.findMany({
         where: { createdAt: { gte: thirtyDaysAgo } },
-        select: { createdAt: true },
-      }),
-      prisma.quizAttempt.aggregate({
-        _avg: { score: true },
+        select: { createdAt: true }
       }),
     ]);
-    
-    // 2. Process Stats for Cards
-    const stats = {
-      totalStudents,
-      totalOrgs,
-      totalAttempts,
-      avgScore: avgScoreData._avg.score ? Math.round(avgScoreData._avg.score) : 0,
-    };
 
-    // 3. Process Chart Data
-    const chartData = processAttemptData(recentAttempts);
+    // --- Calculations ---
+    
+    // 1. Weekly Engagement
+    const uniqueActiveUsers = new Set(recentEngagement.map(a => a.userId)).size;
+    const totalTimeSeconds = recentEngagement.reduce((sum, a) => sum + a.timeTaken, 0);
+    const avgDailyMinutes = uniqueActiveUsers > 0
+      ? Math.round((totalTimeSeconds / 60) / (uniqueActiveUsers * 7))
+      : 0;
+
+    // 2. Process Charts
+    const growthChart = processChartData(recentSignups);
+    const attemptsChart = processChartData(recentAttempts);
 
     return NextResponse.json({
-      stats,
-      chartData,
+      stats: {
+        totalStudents,
+        totalOrgs,
+        activeUsers24h: logins24h,
+        weeklyAvgDailyMinutes: avgDailyMinutes,
+        weeklyActiveUsers: uniqueActiveUsers,
+      },
+      charts: {
+        growth: growthChart,
+        activity: attemptsChart,
+      }
     });
 
   } catch (error) {

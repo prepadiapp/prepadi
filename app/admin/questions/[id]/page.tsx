@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { QuestionType } from '@/lib/generated/prisma/enums'; 
 import { Exam, Subject } from '@/lib/generated/prisma/client'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,7 +23,6 @@ import { AlertCircle, ArrowLeft, Loader2, Plus, Trash2 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import Link from 'next/link';
 
-
 type FormOption = {
   id?: string;
   text: string;
@@ -40,16 +40,21 @@ export default function QuestionEditorPage() {
   const id = params.id as string;
   const isEditMode = id !== 'new';
 
-
   const [filterData, setFilterData] = useState<FilterData>({ exams: [], subjects: [] });
   
-
+  // --- Form State ---
   const [text, setText] = useState('');
   const [explanation, setExplanation] = useState('');
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [subjectId, setSubjectId] = useState('');
   const [examId, setExamId] = useState('');
   const [tags, setTags] = useState<string[]>([]);
+  
+  // --- NEW STATE ---
+  const [section, setSection] = useState('');
+  const [qType, setQType] = useState<QuestionType>(QuestionType.OBJECTIVE);
+  // ----------------
+
   const [options, setOptions] = useState<FormOption[]>([
     { text: '', isCorrect: true },
     { text: '', isCorrect: false },
@@ -57,14 +62,12 @@ export default function QuestionEditorPage() {
     { text: '', isCorrect: false },
   ]);
 
-  
   const [loading, setLoading] = useState(isEditMode);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // --- Fetch Data for Edit Mode and Filters ---
+  // --- Fetch Data ---
   useEffect(() => {
-    // 1. Fetch filter data (Exams, Subjects)
     const fetchFilterData = async () => {
       try {
         const [examsRes, subjectsRes] = await Promise.all([
@@ -79,7 +82,6 @@ export default function QuestionEditorPage() {
       }
     };
 
-    // 2. Fetch question data if in Edit Mode
     const fetchQuestionData = async () => {
       if (!isEditMode) return;
       
@@ -89,18 +91,31 @@ export default function QuestionEditorPage() {
         if (!res.ok) throw new Error('Failed to fetch question data');
         const question = await res.json();
         
-        // Populate the form
         setText(question.text);
         setExplanation(question.explanation || '');
         setYear(question.year);
         setSubjectId(question.subjectId);
         setExamId(question.examId);
-        setTags(question.tags); // API returns tags as string[]
-        setOptions(question.options.map((opt: any) => ({
-          id: opt.id,
-          text: opt.text,
-          isCorrect: opt.isCorrect,
-        })));
+        setTags(question.tags);
+        
+        // --- Populate New Fields ---
+        setSection(question.section || ''); // Use the flattened string from API
+        setQType(question.type as QuestionType);
+        // ---------------------------
+
+        if (question.options && question.options.length > 0) {
+          setOptions(question.options.map((opt: any) => ({
+            id: opt.id,
+            text: opt.text,
+            isCorrect: opt.isCorrect,
+          })));
+        } else {
+          // Reset options if loading a Theory question
+          setOptions([
+            { text: '', isCorrect: true },
+            { text: '', isCorrect: false },
+          ]);
+        }
 
       } catch (err: any) {
         setError(err.message);
@@ -113,6 +128,7 @@ export default function QuestionEditorPage() {
     fetchQuestionData();
   }, [id, isEditMode]);
 
+  // --- Handlers ---
   const handleOptionTextChange = (index: number, value: string) => {
     const newOptions = [...options];
     newOptions[index].text = value;
@@ -137,7 +153,6 @@ export default function QuestionEditorPage() {
     if (options.length > 2) {
       const newOptions = [...options];
       newOptions.splice(index, 1);
-      // If we deleted the correct answer, make the first one correct
       if (!newOptions.some(opt => opt.isCorrect)) {
         newOptions[0].isCorrect = true;
       }
@@ -145,16 +160,20 @@ export default function QuestionEditorPage() {
     }
   };
 
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     
     const apiPath = isEditMode
       ? `/api/admin/questions/${id}`
-      : '/api/admin/questions'; // Create
+      : '/api/admin/questions';
     
     const method = isEditMode ? 'PATCH' : 'POST';
+
+    // --- CONDITIONAL VALIDATION ---
+    // If Theory, we send an empty options array (or minimal valid one if backend requires strict type)
+    // But our backend now handles empty options for Theory.
+    const optionsToSend = qType === QuestionType.OBJECTIVE ? options : [];
 
     try {
       const response = await fetch(apiPath, {
@@ -166,8 +185,11 @@ export default function QuestionEditorPage() {
           year,
           subjectId,
           examId,
-          options,
+          options: optionsToSend,
           tags,
+          // --- Send New Fields ---
+          type: qType,
+          section,
         }),
       });
 
@@ -177,7 +199,7 @@ export default function QuestionEditorPage() {
       }
 
       toast.success(`Question ${isEditMode ? 'updated' : 'created'} successfully!`);
-      router.push('/admin/questions'); // Redirect to list
+      router.push('/admin/questions');
 
     } catch (err: any) {
       toast.error(err.message);
@@ -206,7 +228,7 @@ export default function QuestionEditorPage() {
   return (
     <>
       <Toaster richColors />
-      <section className="space-y-6">
+      <section className="space-y-6 pb-20">
         {/* Header */}
         <div className="flex items-center gap-4">
           <Button asChild variant="outline" size="icon">
@@ -229,7 +251,8 @@ export default function QuestionEditorPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Row 1: Filters */}
+              
+              {/* Row 1: Configuration */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="exam">Exam</Label>
@@ -270,7 +293,35 @@ export default function QuestionEditorPage() {
                 </div>
               </div>
 
-              {/* Row 2: Question Text */}
+              {/* --- Row 2: Type & Section (NEW) --- */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Question Type</Label>
+                  <Select 
+                    value={qType} 
+                    onValueChange={(val) => setQType(val as QuestionType)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={QuestionType.OBJECTIVE}>Objective (Multiple Choice)</SelectItem>
+                      <SelectItem value={QuestionType.THEORY}>Theory (Essay)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="section">Section / Instruction (Optional)</Label>
+                  <Input 
+                    id="section"
+                    value={section}
+                    onChange={(e) => setSection(e.target.value)}
+                    placeholder="e.g., In the following passage..."
+                  />
+                </div>
+              </div>
+
+              {/* Row 3: Question Text */}
               <div className="space-y-2">
                 <Label htmlFor="text">Question Text</Label>
                 <Textarea
@@ -283,46 +334,48 @@ export default function QuestionEditorPage() {
                 />
               </div>
 
-              {/* Row 3: Options */}
-              <div className="space-y-2">
-                <Label>Options</Label>
-                <RadioGroup
-                  value={String(options.findIndex(o => o.isCorrect))}
-                  onValueChange={(index) => handleCorrectAnswerChange(Number(index))}
-                  className="space-y-3"
-                >
-                  {options.map((opt, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <RadioGroupItem value={String(index)} id={`opt-${index}`} />
-                      <Input
-                        value={opt.text}
-                        onChange={(e) => handleOptionTextChange(index, e.target.value)}
-                        placeholder={`Option ${String.fromCharCode(65 + index)}`}
-                        required
-                        className="flex-1"
-                      />
-                      {options.length > 2 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeOption(index)}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </RadioGroup>
-                {options.length < 5 && (
-                  <Button type="button" variant="outline" size="sm" onClick={addOption}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Option
-                  </Button>
-                )}
-              </div>
+              {/* Row 4: Options (Conditional) */}
+              {qType === QuestionType.OBJECTIVE && (
+                <div className="space-y-2">
+                  <Label>Options</Label>
+                  <RadioGroup
+                    value={String(options.findIndex(o => o.isCorrect))}
+                    onValueChange={(index) => handleCorrectAnswerChange(Number(index))}
+                    className="space-y-3"
+                  >
+                    {options.map((opt, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <RadioGroupItem value={String(index)} id={`opt-${index}`} />
+                        <Input
+                          value={opt.text}
+                          onChange={(e) => handleOptionTextChange(index, e.target.value)}
+                          placeholder={`Option ${String.fromCharCode(65 + index)}`}
+                          required
+                          className="flex-1"
+                        />
+                        {options.length > 2 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeOption(index)}
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </RadioGroup>
+                  {options.length < 5 && (
+                    <Button type="button" variant="outline" size="sm" onClick={addOption}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Option
+                    </Button>
+                  )}
+                </div>
+              )}
 
-              {/* Row 4: Tags */}
+              {/* Row 5: Tags */}
               <div className="space-y-2">
                 <Label htmlFor="tags">Tags</Label>
                 <TagInput
@@ -332,7 +385,7 @@ export default function QuestionEditorPage() {
                 />
               </div>
 
-              {/* Row 5: Explanation */}
+              {/* Row 6: Explanation */}
               <div className="space-y-2">
                 <Label htmlFor="explanation">Explanation (Optional)</Label>
                 <Textarea
