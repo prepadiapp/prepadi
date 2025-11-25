@@ -1,5 +1,5 @@
 // This is your Prisma schema file,
-// learn more about it in the docs: https://pris.lyd/prisma-schema
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client"
@@ -11,7 +11,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-//  AUTH & USER MODELS ---
+// --- 1. AUTH & USER MODELS ---
 
 model User {
   id              String        @id @default(cuid())
@@ -21,17 +21,31 @@ model User {
   image           String?
   emailVerified   DateTime?
   accounts        Account[]
-  role            UserRole      @default(STUDENT) // Uses the enum below
+  role            UserRole      @default(STUDENT)
+  
+  // Status for deactivation
+  isActive        Boolean       @default(true) 
+  
+  // Last seen (for analytics)
+  lastLogin       DateTime?     @default(now())
+
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
-
-  lastLogin       DateTime?     @default(now())
   
-  // Relations
+  // --- SaaS Relations ---
   organizationId  String?
   organization    Organization? @relation("OrgMembers", fields: [organizationId], references: [id])
   ownedOrganization Organization? @relation("OrgOwner")
+  
+  // A user (Student) can have a subscription directly
+  subscription    Subscription? 
+
+  // Custom overrides (Admin can give specific perks to a specific user)
+  // e.g. { "allowedExams": ["WAEC"], "extraTime": true }
+  customLimits    Json?         
+
   quizAttempts    QuizAttempt[]
+  orders          Order[]
 }
 
 model Account {
@@ -48,7 +62,6 @@ model Account {
   id_token          String? @db.Text
   session_state     String?
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@unique([provider, providerAccountId])
 }
 
@@ -65,73 +78,161 @@ model Organization {
   ownerId   String   @unique
   owner     User     @relation("OrgOwner", fields: [ownerId], references: [id])
   members   User[]   @relation("OrgMembers")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  
+  // --- SaaS Relations ---
+  // Organization has the subscription, not the individual members
+  subscription Subscription? 
+  
+  // Invites sent by this org
+  invites      OrgInvite[]
 
   questions Question[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-// --- EXAM & CONTENT MODELS ---
+// To handle invites
+model OrgInvite {
+  id             String       @id @default(cuid())
+  email          String
+  token          String       @unique
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  status         InviteStatus @default(PENDING)
+  expiresAt      DateTime
+  createdAt      DateTime     @default(now())
+}
 
+// --- 2. BILLING & PLANS (NEW) ---
+
+model Plan {
+  id            String   @id @default(cuid())
+  name          String   // e.g. "Free", "Pro", "Org Basic"
+  description   String?
+  price         Int      // In lowest currency unit (e.g. Kobo for Naira). 0 for Free.
+  currency      String   @default("NGN")
+  interval      PlanInterval // MONTHLY, YEARLY, etc.
+  type          PlanType // STUDENT or ORGANIZATION
+  
+  // The Limits/Features Config
+  // e.g. { "maxStudents": 50, "allowedExams": ["WAEC", "JAMB"], "canCreateExams": true }
+  features      Json 
+  
+  isActive      Boolean  @default(true)
+  
+  subscriptions Subscription[]
+  orders        Order[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Subscription {
+  id             String   @id @default(cuid())
+  
+  // Links
+  userId         String?  @unique // For individual students
+  user           User?    @relation(fields: [userId], references: [id])
+  
+  organizationId String?  @unique // For organizations
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  
+  planId         String
+  plan           Plan     @relation(fields: [planId], references: [id])
+  
+  startDate      DateTime @default(now())
+  endDate        DateTime? // Null means forever (e.g. free plan) or auto-renew logic
+  
+  isActive       Boolean  @default(true)
+  
+  // Provider details (Paystack)
+  providerSubId  String?  // Paystack subscription code
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  userId         String      // Who initiated the payment
+  user           User        @relation(fields: [userId], references: [id])
+  
+  planId         String
+  plan           Plan        @relation(fields: [planId], references: [id])
+  
+  amount         Int
+  currency       String
+  status         OrderStatus @default(PENDING)
+  reference      String      @unique // Paystack reference
+  
+  transaction    Transaction?
+  
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model Transaction {
+  id             String   @id @default(cuid())
+  orderId        String   @unique
+  order          Order    @relation(fields: [orderId], references: [id])
+  
+  amount         Int
+  currency       String
+  status         String   // "success", "failed" (from Payment Gateway)
+  provider       String   // "PAYSTACK"
+  providerRef    String   // Paystack transaction ID
+  
+  paymentDate    DateTime @default(now())
+}
+
+// --- 3. EXAM & CONTENT MODELS ---
 
 model Exam {
   id          String   @id @default(cuid())
-  name        String   @unique // e.g., "WASSCE (WAEC)"
-  shortName   String   @unique // e.g., "WAEC"
+  name        String   @unique
+  shortName   String   @unique // Internal slug (e.g. "UTME")
   description String?
   
-  // Relations
+  // NEW: Map external API names to this internal exam
+  // e.g. { "qboard": "utme", "myquest": "jamb" }
+  apiAliases  Json?    
+
   questions   Question[]
   quizAttempts QuizAttempt[]
 }
 
 model Subject {
   id           String        @id @default(cuid())
-  name         String        @unique // e.g., "Mathematics"
-  
-  // Relations
+  name         String        @unique
   questions    Question[]
   quizAttempts QuizAttempt[]
-}
-
-// For grouping questions under specific instructions or passages
-model Section {
-  id          String     @id @default(cuid())
-  instruction String     @db.Text // e.g. "In each of the following sentences..."
-  passage     String?    @db.Text // Optional: For reading comprehension
-  
-  // Relations
-  questions   Question[]
 }
 
 model Question {
   id          String    @id @default(cuid())
   text        String    @db.Text
   explanation String?   @db.Text
-  sourceApi   String?
+  sourceApi   String?   // e.g., "qboard", "manual"
   year        Int
-
-  type        QuestionType @default(OBJECTIVE)
-
+  
+  // NEW: Image support
+  imageUrl    String? 
+  
   // Relations
   subjectId   String
   subject     Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  
-  // Relation to Exam
   examId      String
   exam        Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
-
-  // Section ---
+  
   sectionId   String?
   section     Section?  @relation(fields: [sectionId], references: [id])
-  
-  options     Option[]
 
+  organizationId String? 
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  options     Option[]
   userAnswers UserAnswer[]
   tags        Tag[]     @relation("QuestionTags")
-
-  organizationId String? // Optional: null for "general" questions
-  organization   Organization? @relation(fields: [organizationId], references: [id])
+  type        QuestionType @default(OBJECTIVE)
 }
 
 model Option {
@@ -140,71 +241,95 @@ model Option {
   isCorrect  Boolean  @default(false)
   questionId String
   question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
-
   userAnswers UserAnswer[]
 }
 
 model Tag {
   id        String     @id @default(cuid())
-  name      String     @unique // The tag name (e.g., "Trigonometry")
-  
-  // Relations
+  name      String     @unique
   questions Question[] @relation("QuestionTags")
 }
 
-// PERFORMANCE MODELS ---
+model Section {
+  id          String     @id @default(cuid())
+  instruction String     @db.Text 
+  passage     String?    @db.Text
+  questions   Question[]
+}
+
+// --- 4. PERFORMANCE MODELS ---
 
 model QuizAttempt {
   id          String   @id @default(cuid())
-  score       Int      // e.g., 85 (percentage)
-  correct     Int      // Total correct answers
-  total       Int      // Total questions answered
-  timeTaken   Int      // Time in seconds
+  score       Int
+  correct     Int
+  total       Int
+  timeTaken   Int
   createdAt   DateTime @default(now())
-  
   year        Int
+  
+  // NEW: Mode
+  mode        QuizMode @default(EXAM) // Exam (Timed) vs Practice (Untimed)
 
-  // Relations
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   subjectId   String
   subject     Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  
-  // NEW: Relation to Exam
   examId      String
   exam        Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
-  
   userAnswers UserAnswer[]
 }
 
-// Model to store the user's answer for each question in an attempt
 model UserAnswer {
   id                String  @id @default(cuid())
-  
-  // Relations
   quizAttemptId     String
   quizAttempt       QuizAttempt @relation(fields: [quizAttemptId], references: [id], onDelete: Cascade)
-  
   questionId        String
   question          Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  
-  // Nullable if they skipped the question
   selectedOptionId  String?
   option            Option?     @relation(fields: [selectedOptionId], references: [id], onDelete: Cascade)
-
-  // Store if this answer was correct for faster lookups
   isCorrect         Boolean
 }
 
-// ENUMS ---
+// --- 5. ENUMS ---
 
 enum UserRole {
   STUDENT
   ORGANIZATION
-  ADMIN 
+  ADMIN
 }
 
 enum QuestionType {
-  OBJECTIVE // Multiple Choice
-  THEORY    // Essay / Open Answer
+  OBJECTIVE
+  THEORY
+}
+
+enum PlanInterval {
+  MONTHLY
+  QUARTERLY
+  BIANNUALLY
+  YEARLY
+  LIFETIME // For free plans
+}
+
+enum PlanType {
+  STUDENT
+  ORGANIZATION
+}
+
+enum OrderStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
+
+enum QuizMode {
+  EXAM      // Timed, simulates real conditions
+  PRACTICE  // Untimed, instant feedback
 }

@@ -13,6 +13,7 @@ import {
   Book,
   BarChart2,
   UploadCloud,
+  CreditCard,
   LogOut,
 } from 'lucide-react';
 import { signOut } from 'next-auth/react';
@@ -20,6 +21,7 @@ import { signOut } from 'next-auth/react';
 // Navigation links
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: Home },
+  { href: '/admin/plans', label: 'Manage Plans', icon: CreditCard },
   { href: '/admin/questions', label: 'Questions', icon: FileQuestion },
   { href: '/admin/exams', label: 'Manage Exams', icon: BookCopy }, 
   { href: '/admin/subjects', label: 'Manage Subjects', icon: Book },
