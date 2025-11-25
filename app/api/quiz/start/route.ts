@@ -1,17 +1,27 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { questionService } from '@/lib/question-service/question-service';
-import { Question, Option } from '@prisma/client'
+// FIX: Import Question and Section models from Prisma client to define the required type
+import { Question, Option, Section } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
 /**
- * A type for the "sanitized" question we send to the client.
- * We Omit sensitive fields (explanation, sourceApi, correct answers)
- * BUT we keep the fields needed for the UI (type, sectionId, imageUrl).
+ * A type for the "sanitized" option we send to the client (excludes correct answer info).
  */
 type SanitizedOption = Omit<Option, 'isCorrect' | 'questionId' | 'userAnswers'>;
 
-// We define the return type explicitly to match what the UI needs
+/**
+ * The structure of a question object returned by questionService.getQuestions.
+ * We must explicitly define the included relations (options and section).
+ */
+type QuestionWithRelations = Question & {
+    options: Option[];
+    section: Section | null; // Section is included via the relation
+};
+
+/**
+ * A type for the "sanitized" question we send to the client.
+ */
 type SanitizedQuestion = {
   id: string;
   text: string;
@@ -19,7 +29,7 @@ type SanitizedQuestion = {
   type: string; // 'OBJECTIVE' | 'THEORY'
   imageUrl: string | null;
   sectionId: string | null;
-  section?: { instruction: string; passage: string | null } | null; // Optional nested section data
+  section?: { instruction: string; passage: string | null } | null;
   options: SanitizedOption[];
 };
 
@@ -42,11 +52,12 @@ export async function POST(request: Request) {
     }
 
     // 3. Call the QuestionService
-    const fullQuestions = await questionService.getQuestions(
+    // FIX: Assert the return type to QuestionWithRelations[] to satisfy the compiler
+    const fullQuestions = (await questionService.getQuestions(
       examId,
       subjectId,
       Number(year)
-    );
+    )) as QuestionWithRelations[];
 
     if (fullQuestions.length === 0) {
       return new NextResponse('No questions found for this selection.', {
@@ -55,29 +66,25 @@ export async function POST(request: Request) {
     }
 
     // 4. Sanitize and Map the questions
-    // This fixes the Type Error by including the new fields
     const sanitizedQuestions: SanitizedQuestion[] = fullQuestions.map((q) => {
       
+      // The type of 'q' now correctly includes 'section' and 'options'
       const sanitizedQuestion: SanitizedQuestion = {
         id: q.id,
         text: q.text,
         year: q.year,
         
-        // --- NEW FIELDS ---
-        type: q.type,           // OBJECTIVE or THEORY
-        imageUrl: q.imageUrl,   // If it has an image
-        sectionId: q.sectionId, // To group questions
+        type: q.type,           
+        imageUrl: q.imageUrl,   
+        sectionId: q.sectionId, 
         
-        // Pass the section details if they exist (for the UI to display instructions)
-        // note: 'q' comes from questionService which includes 'section'
         section: q.section ? {
           instruction: q.section.instruction,
           passage: q.section.passage,
         } : null,
-        // ------------------
 
-        // Sanitize options
-        options: q.options.map((opt) => ({
+        // We explicitly type 'opt' as 'Option' (from Prisma)
+        options: q.options.map((opt: Option) => ({
           id: opt.id,
           text: opt.text,
         })),

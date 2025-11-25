@@ -1,16 +1,18 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { LineChart } from 'lucide-react';
 import { SignOutButton } from '@/components/SignOutButton';
 import { RoleSwitcher } from '@/components/RoleSwitcher';
 import { ExamSelector } from '@/components/ExamSelector';
 import { UserRole } from '@prisma/client';
-// import { UserRole } from '@/lib/generated/prisma/enums';
+import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { LineChart } from 'lucide-react';
 
-
+/**
+ * Server Action to seed default Exams and Subjects.
+ * This is for development convenience.
+ */
 async function seedData() {
   'use server';
 
@@ -40,34 +42,21 @@ async function seedData() {
     create: { name: 'English Language' },
   });
 
-  // Link Subjects to Exams (Many-to-Many)
-  await prisma.exam.update({
-    where: { id: waec.id },
-    data: {
-      subjects: {
-        connect: [{ id: math.id }, { id: english.id }],
-      },
-    },
-  });
-  
-  await prisma.exam.update({
-    where: { id: utme.id },
-    data: {
-      subjects: {
-        connect: [{ id: math.id }, { id: english.id }],
-      },
-    },
-  });
+  // --- REMOVED: Linking Subjects to Exams ---
+  // Since we decoupled them, we don't need this step anymore.
+  // Subjects are universal now.
 
   // Seed a dummy question so the "Year" selector works
   await prisma.question.upsert({
-    where: { text: 'What is 2 + 2?' },
+    where: { id: 'dummy-q-1' }, // Use a fixed ID for upsert stability
     update: {},
     create: {
+      id: 'dummy-q-1',
       text: 'What is 2 + 2?',
       year: 2023,
       examId: waec.id,
       subjectId: math.id,
+      organizationId: null, // General question
       options: {
         create: [
           { text: '3', isCorrect: false },
@@ -78,8 +67,6 @@ async function seedData() {
     },
   });
 }
-
-
 
 export default async function DashboardPage() {
   const session = await getAuthSession();
@@ -103,7 +90,6 @@ export default async function DashboardPage() {
   }
 
   // 3. Fetch Data for STUDENT Dashboard
-  // This user must be a STUDENT to be here.
   const exams = await prisma.exam.findMany({
     orderBy: { name: 'asc' },
   });
@@ -120,12 +106,14 @@ export default async function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* --- ADD THIS BUTTON --- */}
           <Button asChild variant="outline">
             <Link href="/dashboard/performance">
               <LineChart className="w-4 h-4 mr-2" />
               My Performance
             </Link>
           </Button>
+          {/* --- END ADDITION --- */}
           <SignOutButton />
         </div>
       </header>
@@ -138,7 +126,7 @@ export default async function DashboardPage() {
         {/* <RoleSwitcher currentRole={session.user.role} /> */}
 
         {/* --- Seeder Button for Development --- */}
-        {/* {exams.length === 0 && (
+        {exams.length === 0 && (
           <div className="mt-8 p-6 border-dashed border-2 rounded-lg text-center">
             <h3 className="text-xl font-semibold">No Exams Found</h3>
             <p className="mb-4 text-muted-foreground">
@@ -148,7 +136,7 @@ export default async function DashboardPage() {
               <Button type="submit">Seed Dev Data</Button>
             </form>
           </div>
-        )} */}
+        )}
       </main>
     </div>
   );
