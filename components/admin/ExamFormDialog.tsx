@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Exam } from '@/lib/generated/prisma/client'; 
+import { Exam } from '@prisma/client'; 
 import { Button } from '@/components/ui/button';
 import {
   Dialog,

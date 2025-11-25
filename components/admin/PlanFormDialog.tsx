@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plan, Exam } from '@/lib/generated/prisma/client'; 
-import { PlanInterval, PlanType } from '@/lib/generated/prisma/enums'; 
+import { Plan, Exam } from '@prisma/client';
+import { PlanInterval, PlanType } from '@prisma/client';
 import { Button } from '@/components/ui/button';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,

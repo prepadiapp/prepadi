@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Subject } from '@/lib/generated/prisma/client'; 
+import { Subject } from '@prisma/client';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,

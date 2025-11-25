@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import { getAuthSession } from '@/lib/auth';
-import { UserRole } from '@/lib/generated/prisma'; // Corrected path
+import { UserRole } from '@prisma/client';
 
 /**
  * GET: Fetch all subjects

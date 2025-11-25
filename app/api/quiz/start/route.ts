@@ -1,7 +1,7 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { questionService } from '@/lib/question-service/question-service';
-import { Question, Option } from '@/lib/generated/prisma'; // <-- Corrected path
+import { Question, Option } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
 /**

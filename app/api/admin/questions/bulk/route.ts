@@ -1,6 +1,6 @@
 import { getAuthSession } from '@/lib/auth';
 import { questionService } from '@/lib/question-service/question-service';
-import { UserRole } from '@/lib/generated/prisma/enums';
+import { UserRole } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {

@@ -1,6 +1,6 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { UserRole } from '@/lib/generated/prisma/enums'; 
+import { UserRole } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
 export async function PATCH(
