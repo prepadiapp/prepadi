@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { QuestionType } from '@/lib/generated/prisma/enums'; 
-import { Exam, Subject } from '@/lib/generated/prisma/client'; 
+import { Exam, Subject, QuestionType } from '@prisma/client'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';

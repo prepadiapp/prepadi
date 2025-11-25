@@ -1,7 +1,7 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
-import { Exam, Subject } from '@/lib/generated/prisma'; // <-- Corrected path
+import { Exam, Subject } from '@prisma/client';
 
 interface SubmitQuizBody {
   answers: [string, string][]; // An array of [questionId, optionId]

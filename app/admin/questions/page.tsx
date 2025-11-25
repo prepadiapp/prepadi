@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Exam, Subject, Tag } from '@/lib/generated/prisma/client'; 
+import { Exam, Subject, Tag } from '@prisma/client';  
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';

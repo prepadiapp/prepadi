@@ -1,7 +1,7 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 // We import QuestionType to handle the enum logic
-import { UserRole, QuestionType } from '@/lib/generated/prisma/enums'; 
+import { UserRole, QuestionType } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
 /**

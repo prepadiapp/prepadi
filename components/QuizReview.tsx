@@ -3,7 +3,7 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, CheckCircle } from 'lucide-react';
-import { Prisma } from '@/lib/generated/prisma'; // Corrected path
+import { Prisma } from '@prisma/client';
 
 
 type UserAnswerWithDetails = Prisma.UserAnswerGetPayload<{

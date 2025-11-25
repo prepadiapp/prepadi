@@ -1,4 +1,4 @@
-import { QuestionType } from '@/lib/generated/prisma/enums';
+import { QuestionType } from '@prisma/client'; 
 
 export interface ParsedQuestion {
   id: string;

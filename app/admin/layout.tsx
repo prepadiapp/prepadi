@@ -1,6 +1,6 @@
 import { getAuthSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { UserRole } from '@/lib/generated/prisma/enums'; 
+import { UserRole } from '@prisma/client'; 
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
 
 

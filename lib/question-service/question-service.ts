@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { Exam, Subject, Question, Option, QuestionType } from '@/lib/generated/prisma/client';
+import { Exam, Subject, Question, Option, QuestionType } from '@prisma/client';
 import { IQuestionAdapter, StandardizedQuestion, QuestionWithOptions } from './types';
 import { QboardAdapter } from './adapters/qboard-adapter';
 // Import other adapters here in the future

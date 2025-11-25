@@ -1,5 +1,6 @@
-import { Exam, Subject } from '@/lib/generated/prisma/client';
+import { Exam, Subject, QuestionType } from '@prisma/client';
 import { IQuestionAdapter, StandardizedQuestion } from '../types';
+
 
 // The base URL for the Qboard (ALOC) API
 const API_BASE_URL = 'https://questions.aloc.com.ng/api/v2';

@@ -1,7 +1,7 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
-import { UserRole } from '@/lib/generated/prisma';
+import { UserRole } from '@prisma/client';
 /**
  * This is our main Performance API. It fetches all data and
  * processes it on the server to send a clean report to the client.
