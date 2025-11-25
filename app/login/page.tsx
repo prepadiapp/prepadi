@@ -3,7 +3,7 @@
 import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { signIn } from 'next-auth/react';
+import { signIn, getSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { GoogleIcon } from '@/components/GoogleIcon';
 import { Alert, AlertDescription } from '@/components/ui/alert'; 
+import { UserRole } from '@prisma/client';
 
 
 function LoginAlerts() {
@@ -53,6 +54,18 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
+
+  const handlePostLogin = async () => {
+    // Get the fresh session to check the role
+    const session = await getSession();
+    if (session?.user?.role === 'ADMIN') {
+      router.push('/admin');
+    } else {
+      router.push('/dashboard');
+    }
+    router.refresh();
+  };
+
   const handleCredentialsLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -68,8 +81,7 @@ export default function LoginPage() {
 
     if (result?.ok) {
       // Success! Redirect to dashboard.
-      router.push('/dashboard');
-      router.refresh(); 
+      await handlePostLogin();
     } else {
       // Handle different errors
       if(result?.error === 'CredentialsSignin') {
@@ -81,6 +93,8 @@ export default function LoginPage() {
       }
     }
   };
+
+  
 
   const handleGoogleLogin = () => {
     setIsLoading(true);

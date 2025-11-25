@@ -9,12 +9,10 @@ const ACCESS_TOKEN = process.env.QBOARD_ACCESS_TOKEN;
 
 /**
  * HARDCODED availability map based on the Qboard docs.
- * This is our "source of truth" for what this adapter can fetch.
- * We map the API name (e.g., 'english') to its available years.
- * The doc is unclear if these years are for UTME, WASSCE, or both.
- * We will assume for now they are valid for ANY exam type we map.
+ * We explicitly type this as Record<string, number[]> to allow indexing 
+ * by the variable 'apiSubject' (which is of type string), resolving the TypeScript error.
  */
-const QBOARD_AVAILABILITY = {
+const QBOARD_AVAILABILITY: Record<string, number[]> = {
   'english': [2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010],
   'mathematics': [2006, 2007, 2008, 2009, 2013],
   'commerce': [1900, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2016],
@@ -37,10 +35,13 @@ const QBOARD_AVAILABILITY = {
 export class QboardAdapter implements IQuestionAdapter {
 
   public getAvailableYears(exam: Exam, subject: Subject): number[] {
+    // apiSubject is of type string | null
     const apiSubject = this.mapSubject(subject.name);
     const apiType = this.mapExamType(exam.shortName);
 
-    // If this adapter supports this exam/subject...
+    // Because QBOARD_AVAILABILITY is now typed as Record<string, number[]>, 
+    // TypeScript allows indexing with apiSubject (of type string) inside this check.
+    // The previous error is resolved.
     if (apiSubject && apiType && QBOARD_AVAILABILITY[apiSubject]) {
       // ...return the list of years.
       return QBOARD_AVAILABILITY[apiSubject];

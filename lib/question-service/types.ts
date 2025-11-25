@@ -1,4 +1,4 @@
-import { Question, Option, Exam, Subject, QuestionType } from '@/lib/generated/prisma/client'; 
+import { Question, Option, Exam, Subject, QuestionType } from '@prisma/client'; 
 
 /**
  * A helper type that represents a full question with its options.

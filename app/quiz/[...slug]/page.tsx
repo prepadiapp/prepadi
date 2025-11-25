@@ -6,13 +6,23 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { QuizClient } from '@/components/QuizClient';
 import { SanitizedQuestion } from '@/stores/quizStore';
-
+// FIX: Import the Prisma models (Question, Option, Section) needed for type assertion
+import { Question, Option, Section } from '@prisma/client'; 
 
 interface QuizPageProps {
   params: Promise<{
     slug?: string[]; // e.g., ['waec', 'mathematics', '2023']
   }>;
 }
+
+/**
+ * Define the expected full type returned by questionService.getQuestions,
+ * which includes the necessary relations (options and section).
+ */
+type QuestionWithRelations = Question & {
+    options: Option[];
+    section: Section | null;
+};
 
 /**
  * Fetches and validates all the data needed for the quiz.
@@ -64,7 +74,12 @@ async function getQuizData(slug: string[] | undefined) {
     }
 
     // 4. Call our "Smart" Question Service
-    const questions = await questionService.getQuestions(exam.id, subject.id, year);
+    // FIX: Assert the return type to QuestionWithRelations[]
+    const questions = (await questionService.getQuestions(
+        exam.id, 
+        subject.id, 
+        year
+    )) as QuestionWithRelations[];
 
     if (questions.length === 0) {
       throw new Error('No questions could be found for this selection. Please try a different year or subject.');
@@ -75,7 +90,16 @@ async function getQuizData(slug: string[] | undefined) {
       id: q.id,
       text: q.text,
       year: q.year,
-      options: q.options.map((opt) => ({
+      // FIX: Add the missing required properties from the SanitizedQuestion type
+      type: q.type,
+      imageUrl: q.imageUrl,
+      sectionId: q.sectionId,
+      // The type assertion above allows us to safely access q.section here
+      section: q.section ? {
+        instruction: q.section.instruction,
+        passage: q.section.passage,
+      } : null,
+      options: q.options.map((opt: Option) => ({
         id: opt.id,
         text: opt.text,
       })),
@@ -105,7 +129,7 @@ async function getQuizData(slug: string[] | undefined) {
 
 
 export default async function QuizPage({ params }: QuizPageProps) {
- 
+  
   const resolvedParams = await params;
 
   

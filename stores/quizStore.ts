@@ -1,22 +1,43 @@
 import { create } from 'zustand';
-import { Question, Option } from '@/lib/generated/prisma/client';
 
+import { Option } from '@prisma/client';
 
-export type SanitizedOption = Omit<Option, 'isCorrect' | 'questionId'>;
-export type SanitizedQuestion = Omit<Question, 'explanation' | 'sourceApi' | 'subjectId' | 'examId'> & {
+// Update the SanitizedQuestion type to match the API response
+// We omit fields the frontend doesn't need or shouldn't see
+export type SanitizedOption = Omit<Option, 'isCorrect' | 'questionId' | 'userAnswers'>;
+
+export type SanitizedQuestion = {
+  id: string;
+  text: string;
+  year: number;
+  type: 'OBJECTIVE' | 'THEORY'; // Matches QuestionType enum
+  imageUrl: string | null;
+  sectionId: string | null;
+  
+  // Optional nested section data for display
+  section?: {
+    instruction: string; 
+    passage: string | null;
+  } | null;
+  
   options: SanitizedOption[];
 };
 
-
 interface QuizState {
+  // --- Data ---
   questions: SanitizedQuestion[];
-  answers: Map<string, string>; // Maps questionId -> selectedOptionId
+  // Map of questionId -> selectedOptionId
+  answers: Map<string, string>;
+  
+  // --- Navigation ---
   currentIndex: number;
+  
+  // --- Timer & Status ---
   status: 'loading' | 'active' | 'finished';
   startTime: Date | null;
-  timeLimitMinutes: number; // e.g., 60 minutes
-  
-  // These are the "actions" we can call to update the state
+  timeLimitMinutes: number; // Default 45 mins
+
+  // --- Actions ---
   startQuiz: (questions: SanitizedQuestion[], timeLimit?: number) => void;
   selectAnswer: (questionId: string, optionId: string) => void;
   goToQuestion: (index: number) => void;
@@ -26,7 +47,6 @@ interface QuizState {
   resetQuiz: () => void;
 }
 
-// This creates the actual store with the initial state and actions
 export const useQuizStore = create<QuizState>((set, get) => ({
   // --- Initial State ---
   questions: [],
@@ -34,9 +54,10 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   currentIndex: 0,
   status: 'loading',
   startTime: null,
-  timeLimitMinutes: 45, // Default 45 minutes
+  timeLimitMinutes: 45,
 
-  
+  // --- Actions ---
+
   /**
    * Initializes the quiz with questions and starts the timer.
    */

@@ -87,7 +87,7 @@ export default function PerformancePage() {
     );
   }
   
-  if (!data || data.totalAttempts === 0) {
+  if (!data || data.stats.totalAttempts === 0) {
      return (
        <div className="container mx-auto max-w-5xl p-4 md:p-8">
         <Alert>

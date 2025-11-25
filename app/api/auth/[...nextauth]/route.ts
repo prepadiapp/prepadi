@@ -122,24 +122,13 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
 
-     async redirect({ url, baseUrl, token }) {
-      // If a token exists (i.e., user is logged in)
-      if (token) {
-        console.log(`--- [Prepadi REDIRECT] Token role: ${token.role}`);
-        
-        // Check the role on the token
-        if (token.role === UserRole.ADMIN) {
-          // If they are an ADMIN, send them to the admin dashboard
-          // But only if they are trying to go to the base /dashboard
-          const defaultDashboardUrl = `${baseUrl}/dashboard`;
-          if (url === defaultDashboardUrl || url === baseUrl + '/') {
-            return `${baseUrl}/admin`;
-          }
-        }
-      }
-      // Otherwise, return the URL they were trying to go to
-      return url;
-    },
+    async redirect({ url, baseUrl }) {
+      // Allows relative callback URLs
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      // Allows callback URLs on the same origin
+      else if (new URL(url).origin === baseUrl) return url;
+      return baseUrl;
+    }
   },
 
   pages: {

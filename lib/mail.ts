@@ -1,7 +1,29 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Store the client instance outside the function after it's been initialized
+let resendInstance: Resend | null = null;
 const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+
+/**
+ * Initializes the Resend client lazily. 
+ * This prevents the client from being initialized at Next.js build time, 
+ * which is when the RESEND_API_KEY is often missing in the build environment.
+ */
+const getResendClient = (): Resend => {
+    if (resendInstance) {
+        return resendInstance;
+    }
+    
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+        // In a serverless environment like Vercel, this check helps identify missing env vars.
+        throw new Error("RESEND_API_KEY environment variable is not set.");
+    }
+
+    resendInstance = new Resend(apiKey);
+    return resendInstance;
+};
+
 
 /**
  * Sends a password reset email.
@@ -9,6 +31,9 @@ const appUrl = process.env.NEXT_PUBLIC_APP_URL;
  * @param token - The unique verification token.
  */
 export const sendVerificationEmail = async (email: string, token: string) => {
+  // Use the lazy client initializer
+  const resend = getResendClient();
+  
   const verificationLink = `${appUrl}/api/auth/verify/${token}`;
 
   try {
