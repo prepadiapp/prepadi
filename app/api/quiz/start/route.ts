@@ -1,22 +1,28 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { questionService } from '@/lib/question-service/question-service';
-import { Question, Option } from '@prisma/client';
+import { Question, Option } from '@prisma/client'
 import { NextResponse } from 'next/server';
 
 /**
  * A type for the "sanitized" question we send to the client.
- * Notice it does NOT include `isCorrect` or `explanation`.
+ * We Omit sensitive fields (explanation, sourceApi, correct answers)
+ * BUT we keep the fields needed for the UI (type, sectionId, imageUrl).
  */
-type SanitizedOption = Omit<Option, 'isCorrect' | 'questionId'>;
-type SanitizedQuestion = Omit<Question, 'explanation' | 'sourceApi' | 'subjectId' | 'examId'> & {
+type SanitizedOption = Omit<Option, 'isCorrect' | 'questionId' | 'userAnswers'>;
+
+// We define the return type explicitly to match what the UI needs
+type SanitizedQuestion = {
+  id: string;
+  text: string;
+  year: number;
+  type: string; // 'OBJECTIVE' | 'THEORY'
+  imageUrl: string | null;
+  sectionId: string | null;
+  section?: { instruction: string; passage: string | null } | null; // Optional nested section data
   options: SanitizedOption[];
 };
 
-/**
- * This API route is called when a user clicks "Start Exam".
- * It fetches questions, sanitizes them, and sends them to the client.
- */
 export async function POST(request: Request) {
   try {
     // 1. Check for authenticated user
@@ -35,9 +41,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // 3. Call the QuestionService to get the questions
-    // This is the "brain" we built in Part 2. It handles all the logic
-    // of checking the DB, calling APIs, and caching.
+    // 3. Call the QuestionService
     const fullQuestions = await questionService.getQuestions(
       examId,
       subjectId,
@@ -50,23 +54,35 @@ export async function POST(request: Request) {
       });
     }
 
-    // 4. CRITICAL: Sanitize the questions before sending to the client
-    // We must remove all correct answers and explanations.
+    // 4. Sanitize and Map the questions
+    // This fixes the Type Error by including the new fields
     const sanitizedQuestions: SanitizedQuestion[] = fullQuestions.map((q) => {
-      // Create a new object for the question
+      
       const sanitizedQuestion: SanitizedQuestion = {
         id: q.id,
         text: q.text,
         year: q.year,
-        // Sanitize the options
-        options: q.options.map((opt) => {
-          const sanitizedOption: SanitizedOption = {
-            id: opt.id,
-            text: opt.text,
-          };
-          return sanitizedOption;
-        }),
+        
+        // --- NEW FIELDS ---
+        type: q.type,           // OBJECTIVE or THEORY
+        imageUrl: q.imageUrl,   // If it has an image
+        sectionId: q.sectionId, // To group questions
+        
+        // Pass the section details if they exist (for the UI to display instructions)
+        // note: 'q' comes from questionService which includes 'section'
+        section: q.section ? {
+          instruction: q.section.instruction,
+          passage: q.section.passage,
+        } : null,
+        // ------------------
+
+        // Sanitize options
+        options: q.options.map((opt) => ({
+          id: opt.id,
+          text: opt.text,
+        })),
       };
+      
       return sanitizedQuestion;
     });
 
