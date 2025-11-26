@@ -123,7 +123,7 @@ export default async function DashboardPage() {
         <ExamSelector exams={exams} />
         
         {/* Component to allow user to change their role */}
-        {/* <RoleSwitcher currentRole={session.user.role} /> */}
+        <RoleSwitcher currentRole={session.user.role} />
 
         {/* --- Seeder Button for Development --- */}
         {exams.length === 0 && (
