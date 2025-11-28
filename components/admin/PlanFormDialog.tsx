@@ -14,11 +14,10 @@ import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { MultiSelect, MultiSelectOption } from './MultiSelect';
 
-// Define Features JSON
 type PlanFeatures = {
   allowedExamIds: string[];
-  allowedSubjectIds: string[]; // <-- NEW
-  allowedYears: string[];      // <-- NEW (Stored as strings for multi-select compatibility)
+  allowedSubjectIds: string[];
+  allowedYears: string[];
   maxStudents?: number;
   canCreateExams?: boolean;
 };
@@ -30,7 +29,6 @@ interface PlanFormDialogProps {
   onSave: () => void;
 }
 
-// Helper: Generate last 20 years
 const generateYearOptions = () => {
   const currentYear = new Date().getFullYear();
   const years = [];
@@ -51,8 +49,8 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
 
   // Features
   const [allowedExamIds, setAllowedExamIds] = useState<string[]>([]);
-  const [allowedSubjectIds, setAllowedSubjectIds] = useState<string[]>([]); // <-- NEW
-  const [allowedYears, setAllowedYears] = useState<string[]>([]); // <-- NEW
+  const [allowedSubjectIds, setAllowedSubjectIds] = useState<string[]>([]);
+  const [allowedYears, setAllowedYears] = useState<string[]>([]);
   const [maxStudents, setMaxStudents] = useState<number>(0);
   const [canCreateExams, setCanCreateExams] = useState(false);
 
@@ -66,12 +64,16 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
   // --- Fetch Data ---
   useEffect(() => {
     const loadData = async () => {
-      const [examsRes, subRes] = await Promise.all([
-        fetch('/api/admin/exams'),
-        fetch('/api/admin/subjects')
-      ]);
-      if(examsRes.ok) setAllExams(await examsRes.json());
-      if(subRes.ok) setAllSubjects(await subRes.json());
+      try {
+        const [examsRes, subRes] = await Promise.all([
+          fetch('/api/admin/exams'),
+          fetch('/api/admin/subjects')
+        ]);
+        if(examsRes.ok) setAllExams(await examsRes.json());
+        if(subRes.ok) setAllSubjects(await subRes.json());
+      } catch (e) {
+        console.error("Failed to load filter data");
+      }
     };
     loadData();
   }, []);
@@ -143,7 +145,6 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
     }
   };
 
-  // Options for MultiSelect
   const examOpts = allExams.map(e => ({ label: e.name, value: e.id }));
   const subjectOpts = allSubjects.map(s => ({ label: s.name, value: s.id }));
 
@@ -157,11 +158,11 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
           </DialogHeader>
           
           <div className="grid gap-4 py-4">
-            {/* ... (Name, Type, Desc, Price, Interval inputs are unchanged) ... */}
+            {/* Row 1: Name & Type */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Name</Label>
-                <Input value={name} onChange={e => setName(e.target.value)} required />
+                <Label>Plan Name</Label>
+                <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Pro Student" required />
               </div>
               <div className="space-y-2">
                 <Label>Type</Label>
@@ -174,6 +175,19 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
                 </Select>
               </div>
             </div>
+
+            {/* --- ROW 2: DESCRIPTION (ADDED) --- */}
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea 
+                value={description} 
+                onChange={e => setDescription(e.target.value)} 
+                placeholder="What features does this plan include?"
+                rows={2}
+              />
+            </div>
+
+            {/* Row 3: Price & Interval */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Price (Naira)</Label>
