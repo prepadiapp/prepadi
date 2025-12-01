@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Plan, UserRole, PlanType } from '@prisma/client'; // Type Safety
+import { Plan, UserRole, PlanType } from '@prisma/client'; 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, Check, Building, GraduationCap, ArrowRight, ArrowLeft } from "lucide-react";
 import { GoogleIcon } from '@/components/GoogleIcon';
 import { signIn } from 'next-auth/react';
@@ -26,11 +27,12 @@ export default function SignupPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [orgName, setOrgName] = useState(''); // Only for Org
+  const [orgName, setOrgName] = useState(''); 
   
   // UI State
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showOrgDialog, setShowOrgDialog] = useState(false); // Controls the Org Name popup
 
   // --- Step 1: Fetch Plans when Role changes ---
   useEffect(() => {
@@ -57,6 +59,7 @@ export default function SignupPage() {
     setStep(3);
   };
 
+  // Standard Email/Password Signup
   const handleFinalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -81,7 +84,6 @@ export default function SignupPage() {
         throw new Error(msg);
       }
 
-      // Success
       router.push('/verify-email');
     } catch (err: any) {
       setError(err.message || 'Signup failed');
@@ -90,12 +92,21 @@ export default function SignupPage() {
     }
   };
 
-  const handleGoogleSignup = async () => {
+  // Triggered when "Sign Up with Google" is clicked
+  const initiateGoogleSignup = () => {
+    if (selectedRole === UserRole.ORGANIZATION && !orgName.trim()) {
+      setShowOrgDialog(true); // Open the popup if org name is missing
+    } else {
+      performGoogleRedirect(); // Proceed if Student or Org Name is already filled
+    }
+  };
+
+  // The actual redirect logic
+  const performGoogleRedirect = async () => {
     if (!selectedPlan) return;
     
     setLoading(true);
     try {
-      // 1. Save the intent to a cookie
       await fetch('/api/auth/save-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -106,7 +117,6 @@ export default function SignupPage() {
         }),
       });
 
-      // 2. Redirect to Google
       signIn('google', { callbackUrl: '/dashboard' });
     } catch (error) {
       console.error(error);
@@ -174,42 +184,41 @@ export default function SignupPage() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-muted/20 p-4">
         <div className="max-w-5xl w-full space-y-8">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => setStep(1)}>
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <h1 className="text-3xl font-bold">Choose your {selectedRole === 'STUDENT' ? 'Student' : 'Organization'} Plan</h1>
+            <Button variant="ghost" size="icon" onClick={() => setStep(1)}><ArrowLeft className="w-5 h-5" /></Button>
+            <h1 className="text-3xl font-bold">Choose your Plan</h1>
           </div>
 
           {loading ? (
             <div className="flex justify-center py-20"><Loader2 className="w-10 h-10 animate-spin text-primary"/></div>
           ) : (
             <div className="grid md:grid-cols-3 gap-6">
-              {plans.map(plan => (
+              {plans.map(plan => {
+                const features = plan.features as any;
+                const bullets = (features?.displayBullets as string[]) || [];
+                return (
                 <Card key={plan.id} className="flex flex-col relative overflow-hidden hover:shadow-xl transition-shadow">
                   <CardHeader>
                     <CardTitle className="text-xl">{plan.name}</CardTitle>
                     <div className="text-3xl font-bold mt-2">
                       {plan.price === 0 ? 'Free' : `₦${plan.price.toLocaleString()}`}
-                      <span className="text-sm font-normal text-muted-foreground ml-1">
-                        / {plan.interval.toLowerCase()}
-                      </span>
+                      <span className="text-sm font-normal text-muted-foreground ml-1">/ {plan.interval.toLowerCase()}</span>
                     </div>
                     <CardDescription className="mt-2">{plan.description}</CardDescription>
                   </CardHeader>
                   <CardContent className="flex-1">
-                    {/* We could parse plan.features here to show bullets, but for now simple list */}
                     <ul className="space-y-2 text-sm">
-                      <li className="flex items-center"><Check className="w-4 h-4 mr-2 text-green-500"/> Access to Platform</li>
-                      {/* You can add logic here to display specific features from JSON */}
+                      {bullets.length > 0 ? bullets.map((b, i) => (
+                         <li key={i} className="flex items-start"><Check className="w-4 h-4 mr-2 text-green-500 mt-0.5 shrink-0"/> <span className="text-muted-foreground">{b}</span></li>
+                      )) : (
+                         <li className="flex items-center"><Check className="w-4 h-4 mr-2 text-green-500"/> Full Platform Access</li>
+                      )}
                     </ul>
                   </CardContent>
                   <CardFooter>
-                    <Button className="w-full" onClick={() => handlePlanSelect(plan)}>
-                      Select {plan.name}
-                    </Button>
+                    <Button className="w-full" onClick={() => handlePlanSelect(plan)}>Select {plan.name}</Button>
                   </CardFooter>
                 </Card>
-              ))}
+              )})}
             </div>
           )}
         </div>
@@ -219,104 +228,139 @@ export default function SignupPage() {
 
   // Step 3: Registration Form
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/20 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <div className="flex items-center gap-2 mb-2">
-            <Button variant="ghost" size="icon" onClick={() => setStep(2)} className="h-8 w-8">
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-            <span className="text-sm text-muted-foreground">Back to Plans</span>
-          </div>
-          <CardTitle className="text-2xl">Complete Registration</CardTitle>
-          <CardDescription>
-            Creating a <strong>{selectedPlan?.name}</strong> account for <strong>{selectedRole}</strong>.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+    <>
+      <div className="min-h-screen flex items-center justify-center bg-muted/20 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <div className="flex items-center gap-2 mb-2">
+              <Button variant="ghost" size="icon" onClick={() => setStep(2)} className="h-8 w-8">
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+              <span className="text-sm text-muted-foreground">Back to Plans</span>
+            </div>
+            <CardTitle className="text-2xl">Complete Registration</CardTitle>
+            <CardDescription>
+              Creating a <strong>{selectedPlan?.name}</strong> account for <strong>{selectedRole}</strong>.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {error && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
 
-          <form onSubmit={handleFinalSubmit} className="space-y-4">
-            {selectedRole === UserRole.ORGANIZATION && (
+            {/* Email/Password Form */}
+            <form onSubmit={handleFinalSubmit} className="space-y-4">
+              {selectedRole === UserRole.ORGANIZATION && (
+                <div className="space-y-2">
+                  <Label htmlFor="orgName">Organization Name</Label>
+                  <Input 
+                    id="orgName" 
+                    value={orgName} 
+                    onChange={e => setOrgName(e.target.value)} 
+                    placeholder="e.g. Great Heights Academy"
+                    required 
+                  />
+                </div>
+              )}
+              
               <div className="space-y-2">
-                <Label htmlFor="orgName">Organization Name</Label>
+                <Label htmlFor="name">Full Name</Label>
                 <Input 
-                  id="orgName" 
-                  value={orgName} 
-                  onChange={e => setOrgName(e.target.value)} 
-                  placeholder="e.g. Great Heights Academy"
+                  id="name" 
+                  value={name} 
+                  onChange={e => setName(e.target.value)} 
                   required 
                 />
               </div>
-            )}
-            
-            <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
-              <Input 
-                id="name" 
-                value={name} 
-                onChange={e => setName(e.target.value)} 
-                required 
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input 
-                id="email" 
-                type="email" 
-                value={email} 
-                onChange={e => setEmail(e.target.value)} 
-                required 
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input 
-                id="password" 
-                type="password" 
-                value={password} 
-                onChange={e => setPassword(e.target.value)} 
-                required 
-              />
+              
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input 
+                  id="email" 
+                  type="email" 
+                  value={email} 
+                  onChange={e => setEmail(e.target.value)} 
+                  required 
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input 
+                  id="password" 
+                  type="password" 
+                  value={password} 
+                  onChange={e => setPassword(e.target.value)} 
+                  required 
+                />
+              </div>
+
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : 'Create Account'}
+              </Button>
+            </form>
+
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+              <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or continue with</span></div>
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Create Account
+            <Button 
+              variant="outline" 
+              className="w-full" 
+              onClick={initiateGoogleSignup}
+              disabled={loading || !selectedPlan}
+            >
+              <GoogleIcon className="mr-2" />
+              Sign Up with Google
             </Button>
-          </form>
 
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
-            <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or continue with</span></div>
+          </CardContent>
+          <CardFooter className="justify-center">
+            <p className="text-sm text-muted-foreground">
+              Already have an account? <Link href="/login" className="text-primary font-medium hover:underline">Log In</Link>
+            </p>
+          </CardFooter>
+        </Card>
+      </div>
+
+      {/* --- Organization Name Dialog --- */}
+      <Dialog open={showOrgDialog} onOpenChange={setShowOrgDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Organization Setup</DialogTitle>
+            <DialogDescription>
+              Please enter your Organization's name to continue with Google Sign Up.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="dialogOrgName" className="mb-2 block">Organization Name</Label>
+            <Input 
+              id="dialogOrgName" 
+              value={orgName} 
+              onChange={(e) => setOrgName(e.target.value)} 
+              placeholder="e.g. Prestige Academy"
+              autoFocus
+            />
           </div>
-
-          {/* Note: Google Sign Up currently defaults to Student in our AuthOptions. 
-              Handling Org signup via Google is complex (need to ask Org Name after). 
-              For now, this button will create a Student account. */}
-          <Button 
-            variant="outline" 
-            className="w-full" 
-            onClick={handleGoogleSignup}
-            disabled={loading || !selectedPlan} // Disable if no plan selected
-          >
-            <GoogleIcon className="mr-2" />
-            Sign Up with Google
-          </Button>
-
-        </CardContent>
-        <CardFooter className="justify-center">
-          <p className="text-sm text-muted-foreground">
-            Already have an account? <Link href="/login" className="text-primary font-medium hover:underline">Log In</Link>
-          </p>
-        </CardFooter>
-      </Card>
-    </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowOrgDialog(false)}>Cancel</Button>
+            <Button 
+              onClick={() => {
+                if (orgName.trim()) {
+                  setShowOrgDialog(false);
+                  performGoogleRedirect();
+                }
+              }}
+              disabled={!orgName.trim()}
+            >
+              Continue to Google
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

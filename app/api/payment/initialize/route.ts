@@ -25,35 +25,36 @@ export async function POST(request: Request) {
     const reference = `PREP_${randomUUID()}`;
 
     // 3. Create Pending Order in DB
+    // We create the order HERE with 'reference'.
     await PaymentService.createOrder(session.user.id, plan.id, plan.price, reference);
 
     // 4. Initialize Paystack
-    // Allow local development callback handling
-    const callbackUrl = `${process.env.NEXTAUTH_URL}/dashboard/billing?status=success`;
+    const callbackUrl = `${process.env.NEXTAUTH_URL}/dashboard`; 
     
     const paystackResponse = await Paystack.initialize(
       session.user.email!,
-      plan.price,
+      plan.price, 
       callbackUrl,
       {
         custom_fields: [
           { display_name: "Plan", variable_name: "plan_name", value: plan.name },
           { display_name: "User ID", variable_name: "user_id", value: session.user.id }
         ]
-      }
+      },
+      reference // <--- IMPORTANT: Pass our generated reference to Paystack
     );
 
     if (!paystackResponse.status) {
       return new NextResponse(paystackResponse.message, { status: 400 });
     }
 
-    // 5. Return URL to frontend
-    return NextResponse.json({ url: paystackResponse.data.authorization_url });
-
+    // 5. Return Full Data for Inline Popup
+    // The reference returned by Paystack will now match 'PREP_...'
     return NextResponse.json({ 
       url: paystackResponse.data.authorization_url,
       reference: paystackResponse.data.reference,
-      access_code: paystackResponse.data.access_code 
+      access_code: paystackResponse.data.access_code,
+      amount: plan.price * 100 
     });
 
   } catch (error) {

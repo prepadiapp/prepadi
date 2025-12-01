@@ -8,9 +8,8 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Building, GraduationCap, ArrowLeft } from "lucide-react";
+import { Loader2, Building, GraduationCap, ArrowLeft, Check } from "lucide-react";
 import { useSession } from 'next-auth/react';
-import { usePaystackPayment } from 'react-paystack';
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -23,15 +22,18 @@ export default function OnboardingPage() {
   const [orgName, setOrgName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [redirecting, setRedirecting] = useState(false);
   const [verifying, setVerifying] = useState(false);
 
-  // Protect Route
+  // Protect Route & Smart Default
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/login');
     }
-  }, [status, router]);
+    // If user is already an Organization in the DB, default to that role
+    if (session?.user?.role === 'ORGANIZATION') {
+        setSelectedRole(UserRole.ORGANIZATION);
+    }
+  }, [status, router, session]);
 
   // Fetch Plans
   useEffect(() => {
@@ -45,21 +47,6 @@ export default function OnboardingPage() {
         .finally(() => setLoading(false));
     }
   }, [step, selectedRole]);
-
-  // --- 2. PREPARE PAYSTACK CONFIG ---
-  // We need to initialize the config, but we can't fully set the 'reference' 
-  // until the user clicks "Submit" because we need to create the Order first.
-  // So we will trigger this manually.
-
-  const triggerPayment = (config: any) => {
-    // We use the library directly or via a dynamic hook instance
-    // But react-paystack is hook-based. We'll use a dynamic component approach or
-    // simply call the initialize function if we construct it manually.
-    
-    // Actually, the cleanest way in a function:
-    const handler = (window as any).PaystackPop && (window as any).PaystackPop.setup(config);
-    handler && handler.openIframe();
-  };
 
   const handleFinalSubmit = async () => {
     setLoading(true);
@@ -83,13 +70,6 @@ export default function OnboardingPage() {
       // B. Check Payment
       if (data.requiresPayment) {
         
-        // 1. Initialize Order in DB to get a Reference
-        // We use the same initialize API, but we WON'T use the URL it returns.
-        // We just want the reference it creates internally.
-        // Actually, our API returns { url, reference, access_code }. Let's update it.
-        // Or we can just let the API create the order and we grab the reference from the URL response?
-        // No, let's update /api/payment/initialize to return the reference too.
-        
         const initRes = await fetch('/api/payment/initialize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -99,35 +79,29 @@ export default function OnboardingPage() {
         if (!initRes.ok) throw new Error("Payment init failed");
         
         const initData = await initRes.json();
-        const { reference, access_code } = initData; // We need to update the API to return these
+        const { reference, amount } = initData; 
 
         // 2. Open Paystack Popup
-        // We use the Paystack object directly for imperatively opening
-        const paystackConfig = {
-          key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY!, // Need public key
+        const PaystackPop = (await import('@paystack/inline-js')).default;
+        const popup = new PaystackPop();
+        
+        popup.newTransaction({
+          key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY!, 
           email: session?.user?.email!,
-          amount: (selectedPlan?.price || 0) * 100, // Kobo
-          currency: 'NGN',
-          ref: reference, // Use the reference from our DB order
+          amount: amount, 
+          ref: reference, 
           onSuccess: (response: any) => {
             handleVerifyPayment(response.reference);
           },
-          onClose: () => {
+          onCancel: () => {
             setLoading(false);
             alert("Payment cancelled.");
           },
-        };
-
-        // We use the library's initialize method
-        // Note: You need to add the Paystack Script or use the hook properly.
-        // The easiest way with `react-paystack`:
-        const PaystackPop = await import('@paystack/inline-js');
-        const popup = new PaystackPop.default();
-        popup.newTransaction(paystackConfig);
+        });
 
       } else {
         // Free plan
-        router.push('/dashboard');
+        window.location.href = '/dashboard';
       }
 
     } catch (err: any) {
@@ -148,7 +122,7 @@ export default function OnboardingPage() {
 
       if (res.ok) {
         // Success!
-        router.push('/dashboard');
+        window.location.href = '/dashboard'; // Force reload
       } else {
         setError("Payment was successful but verification failed. Please contact support.");
       }
@@ -160,7 +134,6 @@ export default function OnboardingPage() {
     }
   };
 
-  // ... (Step 1 & Step 2 renders are identical to previous version) ...
   // Step 1: Role Selection
   if (step === 1) {
     return (
@@ -168,13 +141,19 @@ export default function OnboardingPage() {
         <div className="max-w-2xl w-full space-y-8 text-center">
           <h1 className="text-3xl font-bold">Finish Setting Up Your Account</h1>
           <div className="grid md:grid-cols-2 gap-6">
-            <Card className="cursor-pointer hover:border-primary" onClick={() => { setSelectedRole(UserRole.STUDENT); setStep(2); }}>
+            <Card 
+                className={`cursor-pointer hover:border-primary ${selectedRole === 'STUDENT' ? 'border-primary ring-1 ring-primary' : ''}`} 
+                onClick={() => { setSelectedRole(UserRole.STUDENT); setStep(2); }}
+            >
               <CardContent className="pt-6 flex flex-col items-center">
                 <GraduationCap className="w-10 h-10 mb-2 text-blue-600" />
                 <h3 className="text-xl font-bold">Student</h3>
               </CardContent>
             </Card>
-            <Card className="cursor-pointer hover:border-primary" onClick={() => { setSelectedRole(UserRole.ORGANIZATION); setStep(2); }}>
+            <Card 
+                className={`cursor-pointer hover:border-primary ${selectedRole === 'ORGANIZATION' ? 'border-primary ring-1 ring-primary' : ''}`}
+                onClick={() => { setSelectedRole(UserRole.ORGANIZATION); setStep(2); }}
+            >
               <CardContent className="pt-6 flex flex-col items-center">
                 <Building className="w-10 h-10 mb-2 text-purple-600" />
                 <h3 className="text-xl font-bold">Organization</h3>
@@ -195,19 +174,40 @@ export default function OnboardingPage() {
             <Button variant="ghost" onClick={() => setStep(1)}><ArrowLeft className="w-4 h-4" /></Button>
             <h1 className="text-2xl font-bold">Choose a Plan</h1>
           </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {plans.map(plan => (
-              <Card key={plan.id}>
-                <CardHeader>
-                  <CardTitle>{plan.name}</CardTitle>
-                  <CardDescription>₦{plan.price.toLocaleString()}</CardDescription>
-                </CardHeader>
-                <CardFooter>
-                  <Button className="w-full" onClick={() => { setSelectedPlan(plan); setStep(3); }}>Select</Button>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
+          
+          {loading ? (
+             <div className="flex justify-center p-12"><Loader2 className="animate-spin w-8 h-8 text-primary"/></div>
+          ) : (
+            <div className="grid md:grid-cols-3 gap-6">
+                {plans.map(plan => {
+                    const features = plan.features as any;
+                    const bullets = (features?.displayBullets as string[]) || [];
+                    return (
+                    <Card key={plan.id} className="flex flex-col relative overflow-hidden hover:shadow-xl transition-shadow">
+                        <CardHeader>
+                        <CardTitle className="text-xl">{plan.name}</CardTitle>
+                        <div className="text-3xl font-bold mt-2">
+                            {plan.price === 0 ? 'Free' : `₦${plan.price.toLocaleString()}`}
+                            <span className="text-sm font-normal text-muted-foreground ml-1">/ {plan.interval.toLowerCase()}</span>
+                        </div>
+                        <CardDescription className="mt-2">{plan.description}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex-1">
+                        <ul className="space-y-2 text-sm">
+                            {bullets.length > 0 ? bullets.map((b, i) => (
+                                <li key={i} className="flex items-start"><Check className="w-4 h-4 mr-2 text-green-500 mt-0.5 shrink-0"/> <span className="text-muted-foreground">{b}</span></li>
+                            )) : (
+                                <li className="flex items-center"><Check className="w-4 h-4 mr-2 text-green-500"/> Full Platform Access</li>
+                            )}
+                        </ul>
+                        </CardContent>
+                        <CardFooter>
+                        <Button className="w-full" onClick={() => { setSelectedPlan(plan); setStep(3); }}>Select</Button>
+                        </CardFooter>
+                    </Card>
+                )})}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -224,7 +224,7 @@ export default function OnboardingPage() {
           {selectedRole === 'ORGANIZATION' && (
             <div className="space-y-2">
               <Label>Organization Name</Label>
-              <Input value={orgName} onChange={e => setOrgName(e.target.value)} />
+              <Input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="e.g. My Academy" />
             </div>
           )}
           
@@ -235,8 +235,8 @@ export default function OnboardingPage() {
             </p>
           </div>
 
-          <Button className="w-full" onClick={handleFinalSubmit} disabled={loading}>
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Complete Setup'}
+          <Button className="w-full" onClick={handleFinalSubmit} disabled={loading || verifying}>
+            {(loading || verifying) ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Complete Setup'}
           </Button>
         </CardContent>
       </Card>

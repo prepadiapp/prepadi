@@ -22,19 +22,37 @@ function calculateEndDate(interval: PlanInterval): Date | null {
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
-
+  session: {
+    strategy: 'jwt',
+  },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      profile(profile) {
+      async profile(profile) {
+        // 1. Attempt to get Role from Intent Cookie immediately
+        let role = UserRole.STUDENT; 
+        try {
+          const cookieStore = await cookies();
+          const intentCookie = cookieStore.get('prepadi_signup_intent');
+          if (intentCookie) {
+            const intent = JSON.parse(intentCookie.value);
+            // Verify role validity
+            if (intent.role && Object.values(UserRole).includes(intent.role)) {
+              role = intent.role;
+            }
+          }
+        } catch (error) {
+          console.error("Error reading intent cookie in profile:", error);
+        }
+
         return {
           id: profile.sub,
           name: profile.name,
           email: profile.email,
           image: profile.picture,
           emailVerified: profile.email_verified ? new Date() : null,
-          role: UserRole.STUDENT, // Default role
+          role: role, 
         };
       },
     }),
@@ -66,100 +84,6 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
 
-  events: {
-    async linkAccount({ user, account }) {
-      if (account.provider === 'google') {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { emailVerified: new Date() },
-        });
-      }
-    },
-
-    // --- SIGN IN EVENT ---
-    async signIn({ user, account }) {
-      // 1. Update Last Login
-      try {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { lastLogin: new Date() }
-        });
-      } catch (e) { 
-        console.error("Login tracking error", e); 
-      }
-
-      // 2. CHECK FOR SIGNUP INTENT
-      if (account && account.provider === 'google') {
-        try {
-          // Await cookies()
-          const cookieStore = await cookies(); 
-          const intentCookie = cookieStore.get('prepadi_signup_intent');
-
-          if (intentCookie) {
-            const intent = JSON.parse(intentCookie.value);
-            const { planId, role, orgName } = intent;
-
-            // Ensure user doesn't already have a subscription
-            const existingSub = await prisma.subscription.findFirst({ 
-              where: { userId: user.id } 
-            });
-
-            if (!existingSub) {
-              const plan = await prisma.plan.findUnique({ where: { id: planId } });
-              
-              if (plan) {
-                console.log(`[AUTH EVENT] Processing Intent for ${user.email}: ${plan.name}`);
-                
-                await prisma.$transaction(async (tx) => {
-                  // A. Update Role
-                  await tx.user.update({
-                    where: { id: user.id },
-                    data: { role: role as UserRole },
-                  });
-
-                  // B. Handle Org
-                  let orgId = null;
-                  if (role === UserRole.ORGANIZATION && orgName) {
-                    const org = await tx.organization.create({
-                      data: { name: orgName, ownerId: user.id }
-                    });
-                    orgId = org.id;
-                    await tx.user.update({
-                      where: { id: user.id },
-                      data: { ownedOrganization: { connect: { id: org.id } } }
-                    });
-                  }
-
-                  // C. Create Subscription
-                  const isPaid = plan.price > 0;
-                  const userIdToLink = role === UserRole.STUDENT ? user.id : null;
-                  const orgIdToLink = role === UserRole.ORGANIZATION ? orgId : null;
-
-                  await tx.subscription.create({
-                    data: {
-                      planId: plan.id,
-                      startDate: new Date(),
-                      endDate: calculateEndDate(plan.interval),
-                      isActive: !isPaid, // Active if Free, Inactive if Paid
-                      userId: userIdToLink,
-                      organizationId: orgIdToLink,
-                    },
-                  });
-                });
-              }
-            }
-          }
-        } catch (error) {
-          console.error("[AUTH EVENT] Failed to process signup intent:", error);
-        }
-      }
-    },
-  },
-
-  session: {
-    strategy: 'jwt',
-  },
-
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
@@ -180,11 +104,138 @@ export const authOptions: NextAuthOptions = {
     },
 
     async redirect({ url, baseUrl }) {
-      // Allows relative callback URLs
       if (url.startsWith("/")) return `${baseUrl}${url}`;
-      // Allows callback URLs on the same origin
       else if (new URL(url).origin === baseUrl) return url;
       return baseUrl;
+    }
+  },
+
+  events: {
+    async linkAccount({ user }) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerified: new Date() },
+      });
+    },
+
+    // Handled in EVENT to ensure User exists in DB
+    async signIn({ user, account }) {
+      // We only care about Google signups that need setup
+      if (account?.provider === 'google') {
+        try {
+          const cookieStore = await cookies(); 
+          const intentCookie = cookieStore.get('prepadi_signup_intent');
+
+          if (intentCookie) {
+            console.log(`[AUTH EVENT] Processing Intent for ${user.email}`);
+            const intent = JSON.parse(intentCookie.value);
+            const { planId, role, orgName } = intent;
+
+            // 1. Check if user already has a subscription (User OR Org owner)
+            // We need to fetch the fresh user from DB to check relations
+            const dbUser = await prisma.user.findUnique({ 
+              where: { id: user.id },
+              include: { 
+                subscription: true, 
+                ownedOrganization: { include: { subscription: true } } // Fetch owned org info
+              }
+            });
+
+            if (!dbUser) return; // Should not happen if adapter works
+
+            // Check if Subscription exists either on User OR on their Owned Organization
+            const hasUserSub = !!dbUser.subscription;
+            const hasOrgSub = !!dbUser.ownedOrganization?.subscription;
+
+            // If they have NO subscription at all, proceed
+            if (!hasUserSub && !hasOrgSub) {
+               const plan = await prisma.plan.findUnique({ where: { id: planId } });
+               
+               if (plan) {
+                 await prisma.$transaction(async (tx) => {
+                    // A. Ensure Role Matches (Fix if profile callback missed it)
+                    if (dbUser.role !== role) {
+                        console.log(`[AUTH EVENT] correcting role to ${role}`);
+                        await tx.user.update({
+                            where: { id: dbUser.id },
+                            data: { role: role as UserRole },
+                        });
+                    }
+
+                    // B. Handle Org Creation
+                    let orgId = null;
+                    if (role === UserRole.ORGANIZATION) {
+                      if (!orgName) {
+                          console.error("[AUTH EVENT] Missing Org Name for Organization Role");
+                          // Fallback or error? For now, we log.
+                          // If we can't create org, we can't create subscription.
+                          return; 
+                      }
+
+                      // Check idempotency
+                      const existingOrg = await tx.organization.findUnique({ where: { ownerId: dbUser.id } });
+                      
+                      if (!existingOrg) {
+                        console.log(`[AUTH EVENT] Creating Organization: ${orgName}`);
+                        const org = await tx.organization.create({
+                          data: { name: orgName, ownerId: dbUser.id }
+                        });
+                        orgId = org.id;
+                        
+                        // Link User to Org
+                        await tx.user.update({
+                          where: { id: dbUser.id },
+                          data: { ownedOrganization: { connect: { id: org.id } } }
+                        });
+                      } else {
+                        orgId = existingOrg.id;
+                      }
+                    }
+
+                    // C. Create Subscription
+                    const isPaid = plan.price > 0;
+                    
+                    // CRITICAL FIX: Explicitly handle ID assignment
+                    let userIdToLink = undefined;
+                    let orgIdToLink = undefined;
+
+                    if (role === UserRole.STUDENT) {
+                        userIdToLink = dbUser.id;
+                    } else if (role === UserRole.ORGANIZATION) {
+                        if (orgId) {
+                            orgIdToLink = orgId;
+                        } else {
+                            console.error("[AUTH EVENT] Cannot create subscription: Org ID is missing");
+                            return; 
+                        }
+                    }
+
+                    console.log(`[AUTH EVENT] Creating Sub. User: ${userIdToLink}, Org: ${orgIdToLink}, Plan: ${plan.name}`);
+
+                    await tx.subscription.create({
+                        data: {
+                            planId: plan.id,
+                            startDate: new Date(),
+                            endDate: calculateEndDate(plan.interval),
+                            isActive: !isPaid, // Active if Free, Inactive if Paid
+                            userId: userIdToLink,
+                            organizationId: orgIdToLink,
+                        },
+                    });
+                 });
+               } else {
+                   console.error(`[AUTH EVENT] Plan not found: ${planId}`);
+               }
+            } else {
+                console.log(`[AUTH EVENT] User already has subscription. Skipping setup.`);
+            }
+          } else {
+              console.log("[AUTH EVENT] No intent cookie found.");
+          }
+        } catch (error) {
+          console.error("[AUTH EVENT] Error processing signup intent:", error);
+        }
+      }
     }
   },
 

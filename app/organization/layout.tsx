@@ -1,9 +1,17 @@
+import { getAuthSession } from '@/lib/auth';
+import { redirect } from 'next/navigation';
 import { DashboardGuard } from '@/components/DashboardGuard';
 import { OrgSidebar } from '@/components/org/OrgSidebar';
 
-export default function OrganizationLayout({ children }: { children: React.ReactNode }) {
+export default async function OrganizationLayout({ children }: { children: React.ReactNode }) {
+  const session = await getAuthSession();
+
+  if (!session?.user?.email) {
+    redirect('/login');
+  }
+
   return (
-    <DashboardGuard>
+    <DashboardGuard userEmail={session.user.email}>
       <div className="min-h-screen bg-muted/20">
         <OrgSidebar />
         <main className="md:pl-64">

@@ -10,9 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Plus, X, List } from 'lucide-react';
 import { toast } from 'sonner';
-import { MultiSelect, MultiSelectOption } from './MultiSelect';
+import { MultiSelect } from './MultiSelect';
 
 type PlanFeatures = {
   allowedExamIds: string[];
@@ -20,6 +20,8 @@ type PlanFeatures = {
   allowedYears: string[];
   maxStudents?: number;
   canCreateExams?: boolean;
+  // New: Display Bullet Points
+  displayBullets?: string[]; 
 };
 
 interface PlanFormDialogProps {
@@ -53,6 +55,10 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
   const [allowedYears, setAllowedYears] = useState<string[]>([]);
   const [maxStudents, setMaxStudents] = useState<number>(0);
   const [canCreateExams, setCanCreateExams] = useState(false);
+  
+  // Display Bullets
+  const [bullets, setBullets] = useState<string[]>([]);
+  const [newBullet, setNewBullet] = useState('');
 
   // Data Sources
   const [allExams, setAllExams] = useState<Exam[]>([]);
@@ -61,7 +67,6 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
 
   const yearOptions = generateYearOptions();
 
-  // --- Fetch Data ---
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -78,7 +83,6 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
     loadData();
   }, []);
 
-  // --- Populate Form ---
   useEffect(() => {
     if (open && plan) {
       setName(plan.name);
@@ -94,12 +98,13 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
       setAllowedYears(features.allowedYears || []);
       setMaxStudents(features.maxStudents || 0);
       setCanCreateExams(features.canCreateExams || false);
+      setBullets(features.displayBullets || []);
     } else if (open && !plan) {
-      // Reset
       setName(''); setDescription(''); setPrice(0);
       setInterval(PlanInterval.MONTHLY); setType(PlanType.STUDENT); setIsActive(true);
       setAllowedExamIds([]); setAllowedSubjectIds([]); setAllowedYears([]);
       setMaxStudents(0); setCanCreateExams(false);
+      setBullets([]);
     }
   }, [open, plan]);
 
@@ -109,6 +114,17 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
   const handleSelectAllSubjects = () => setAllowedSubjectIds(allSubjects.map(s => s.id));
   const handleSelectAllYears = () => setAllowedYears(yearOptions.map(y => y.value));
 
+  const addBullet = () => {
+    if (newBullet.trim()) {
+      setBullets([...bullets, newBullet.trim()]);
+      setNewBullet('');
+    }
+  };
+
+  const removeBullet = (index: number) => {
+    setBullets(bullets.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -117,6 +133,7 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
       allowedExamIds,
       allowedSubjectIds,
       allowedYears,
+      displayBullets: bullets,
     };
     if (type === PlanType.ORGANIZATION) {
       features.maxStudents = maxStudents;
@@ -154,7 +171,7 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{plan ? 'Edit Plan' : 'New Plan'}</DialogTitle>
-            <DialogDescription>Configure pricing and access restrictions.</DialogDescription>
+            <DialogDescription>Configure pricing, features, and restrictions.</DialogDescription>
           </DialogHeader>
           
           <div className="grid gap-4 py-4">
@@ -176,13 +193,13 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
               </div>
             </div>
 
-            {/* --- ROW 2: DESCRIPTION (ADDED) --- */}
+            {/* Row 2: Description */}
             <div className="space-y-2">
-              <Label>Description</Label>
+              <Label>Short Description</Label>
               <Textarea 
                 value={description} 
                 onChange={e => setDescription(e.target.value)} 
-                placeholder="What features does this plan include?"
+                placeholder="A brief tagline for the card."
                 rows={2}
               />
             </div>
@@ -208,9 +225,34 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
               </div>
             </div>
 
-            {/* --- Feature Configuration --- */}
+            {/* --- NEW: Feature Bullets --- */}
+            <div className="space-y-3 border-t pt-4">
+               <Label className="flex items-center gap-2"><List className="w-4 h-4" /> Feature List (Bullet Points)</Label>
+               <div className="flex gap-2">
+                 <Input 
+                    value={newBullet} 
+                    onChange={(e) => setNewBullet(e.target.value)} 
+                    placeholder="e.g. Access to 1000+ Questions"
+                    onKeyDown={(e) => { if(e.key === 'Enter') { e.preventDefault(); addBullet(); }}}
+                 />
+                 <Button type="button" onClick={addBullet} size="icon"><Plus className="w-4 h-4" /></Button>
+               </div>
+               <div className="space-y-2">
+                 {bullets.map((bullet, i) => (
+                    <div key={i} className="flex items-center justify-between bg-muted p-2 rounded-md text-sm">
+                        <span>{bullet}</span>
+                        <button type="button" onClick={() => removeBullet(i)} className="text-muted-foreground hover:text-destructive">
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                 ))}
+                 {bullets.length === 0 && <p className="text-xs text-muted-foreground italic">No bullet points added yet.</p>}
+               </div>
+            </div>
+
+            {/* --- Technical Restrictions --- */}
             <div className="border-t pt-4 space-y-4">
-              <h3 className="font-semibold text-sm">Restrictions</h3>
+              <h3 className="font-semibold text-sm text-muted-foreground">Technical Restrictions</h3>
               
               {/* Exams */}
               <div className="space-y-2">
@@ -254,7 +296,7 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
               )}
             </div>
             
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 mt-2">
                <input type="checkbox" id="active" checked={isActive} onChange={e => setIsActive(e.target.checked)} className="h-4 w-4" />
                <Label htmlFor="active">Plan is Active</Label>
             </div>

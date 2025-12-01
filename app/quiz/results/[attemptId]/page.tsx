@@ -1,170 +1,183 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress'; 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle, Check, Clock, Hash, Percent, Target } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock, XCircle, Home, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
 import { QuizReview } from '@/components/QuizReview'; 
+import { StudentNav } from '@/components/student/StudentNav';
 
+// --- Helper Component: Visual Score Card ---
+function ResultSummary({ score, correct, total, timeFormatted }: { score: number, correct: number, total: number, timeFormatted: string }) {
+  const isPass = score >= 50;
+  
+  // Simple CSS-based conic gradient for the ring
+  const ringBackground = `
+    radial-gradient(closest-side, white 79%, transparent 80% 100%),
+    conic-gradient(${isPass ? '#22c55e' : '#ef4444'} ${score}%, #e2e8f0 0)
+  `;
 
-function ScoreCircle({ score }: { score: number }) {
-  
-  const style = {
-    background: `
-      radial-gradient(closest-side, white 79%, transparent 80% 100%),
-      conic-gradient(${score < 50 ? '#ef4444' : '#22c55e'} ${score}%, #e2e8f0 0)
-    `,
-  };
-  
   return (
-    <div 
-      className="w-48 h-48 rounded-full flex items-center justify-center shadow-md"
-      style={style}
-    >
-      <span className={`text-5xl font-bold ${score < 50 ? 'text-red-500' : 'text-green-500'}`}>
-        {score}%
-      </span>
+    <div className="grid lg:grid-cols-2 gap-6 mb-8">
+      {/* Main Score Card */}
+      <Card className="border-none shadow-sm bg-white overflow-hidden relative">
+         <div className={`absolute top-0 left-0 w-full h-1 ${isPass ? 'bg-green-500' : 'bg-red-500'}`} />
+         <CardContent className="p-8 flex flex-col items-center justify-center text-center h-full min-h-[300px]">
+            <div 
+                className="w-40 h-40 rounded-full flex items-center justify-center mb-6 relative"
+                style={{ background: ringBackground }}
+            >
+                <div className="flex flex-col items-center">
+                    <span className={`text-5xl font-extrabold tracking-tighter ${isPass ? 'text-green-600' : 'text-red-600'}`}>
+                        {score}%
+                    </span>
+                </div>
+            </div>
+            <h2 className="text-3xl font-bold text-slate-900 mb-2">
+                {isPass ? "Excellent Work!" : "Keep Practicing!"}
+            </h2>
+            <p className="text-slate-500 max-w-xs mx-auto">
+                You answered <span className="font-medium text-slate-900">{correct}</span> out of <span className="font-medium text-slate-900">{total}</span> questions correctly.
+            </p>
+         </CardContent>
+      </Card>
+
+      {/* Detailed Stats Grid */}
+      <div className="flex flex-col gap-4">
+         {/* Correct */}
+         <Card className="border-none shadow-sm flex-1 bg-white">
+            <CardContent className="p-6 flex items-center gap-4 h-full">
+                <div className="p-3 rounded-full bg-green-50 text-green-600">
+                    <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <div>
+                    <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Correct Answers</p>
+                    <p className="text-2xl font-bold text-slate-900">{correct} <span className="text-sm font-normal text-muted-foreground">/ {total}</span></p>
+                </div>
+            </CardContent>
+         </Card>
+         
+         {/* Incorrect */}
+         <Card className="border-none shadow-sm flex-1 bg-white">
+            <CardContent className="p-6 flex items-center gap-4 h-full">
+                <div className="p-3 rounded-full bg-red-50 text-red-600">
+                    <XCircle className="w-8 h-8" />
+                </div>
+                <div>
+                    <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Incorrect Answers</p>
+                    <p className="text-2xl font-bold text-slate-900">{total - correct}</p>
+                </div>
+            </CardContent>
+         </Card>
+
+         {/* Time */}
+         <Card className="border-none shadow-sm flex-1 bg-white">
+            <CardContent className="p-6 flex items-center gap-4 h-full">
+                <div className="p-3 rounded-full bg-blue-50 text-blue-600">
+                    <Clock className="w-8 h-8" />
+                </div>
+                <div>
+                    <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Time Spent</p>
+                    <p className="text-2xl font-bold text-slate-900">{timeFormatted}</p>
+                </div>
+            </CardContent>
+         </Card>
+      </div>
     </div>
   );
 }
 
-
-function StatCard({ title, value, icon }: { title: string, value: string | number, icon: React.ReactNode }) {
-  return (
-    <Card className="flex-1">
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        {icon}
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-      </CardContent>
-    </Card>
-  );
-}
-
-
-export default async function ResultsPage({ params }: { 
-  params: Promise<{ attemptId: string }> 
-}) {
-  
-  // 1. Await the params to resolve them
-  const resolvedParams = await params;
-  const { attemptId } = resolvedParams;
-
+export default async function ResultsPage({ params }: { params: Promise<{ attemptId: string }> }) {
+  const { attemptId } = await params;
   const session = await getAuthSession();
+
   if (!session?.user) {
     redirect('/login');
   }
 
-  // Fetch the attempt, but ONLY if it belongs to the logged-in user
   const attempt = await prisma.quizAttempt.findUnique({
-    where: { 
-      id: attemptId,
-      userId: session.user.id // SECURE: Users can only see their own results
-    },
+    where: { id: attemptId, userId: session.user.id },
     include: {
       exam: true,
       subject: true,
-      // This is the complex query to get all data for the review
       userAnswers: {
-        orderBy: {
-          question: { id: 'asc' } // Keep a consistent order
-        },
+        orderBy: { question: { id: 'asc' } },
         include: {
-          question: {
-            include: {
-              options: true, // Get all options for the question
-            },
-          },
-          option: true, // Get the option the user selected
+          question: { include: { options: true } },
+          option: true,
         },
       },
     },
   });
 
-  // Handle case where attempt is not found
   if (!attempt) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Alert variant="destructive" className="max-w-lg">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>Quiz attempt not found or you do not have permission to view it.</AlertDescription>
-        </Alert>
+      <div className="min-h-screen bg-slate-50/50 pb-20 md:pb-0">
+        <StudentNav />
+        <main className="md:pl-64 min-h-screen transition-all p-4 md:p-8 flex items-center justify-center">
+            <Alert variant="destructive" className="max-w-md bg-white shadow-lg">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Result Not Found</AlertTitle>
+            <AlertDescription>This result either doesn't exist or you don't have permission to view it.</AlertDescription>
+            <Button asChild className="mt-4 w-full" variant="outline"><Link href="/dashboard">Go Home</Link></Button>
+            </Alert>
+        </main>
       </div>
     );
   }
 
-  // Format the time
-  const timeInSeconds = attempt.timeTaken;
-  const minutes = Math.floor(timeInSeconds / 60);
-  const seconds = timeInSeconds % 60;
+  // Time Formatting
+  const minutes = Math.floor(attempt.timeTaken / 60);
+  const seconds = attempt.timeTaken % 60;
   const timeFormatted = `${minutes}m ${seconds}s`;
 
+  const retryLink = `/quiz/${attempt.exam.shortName.toLowerCase()}/${attempt.subject.name.toLowerCase().replace(/\s+/g, '-')}/${attempt.year}`;
+
   return (
-    <div className="container mx-auto max-w-4xl p-4 md:p-8">
-      <header className="mb-8">
-        <h1 className="text-4xl font-bold">Quiz Results</h1>
-        <p className="text-xl text-muted-foreground">
-          {attempt.exam.name} - {attempt.subject.name} ({attempt.year})
-        </p>
-      </header>
+    <div className="min-h-screen bg-slate-50/50 pb-20 md:pb-0">
+      <StudentNav />
+      <main className="md:pl-64 min-h-[calc(100vh-4rem)] md:min-h-screen transition-all">
+        <div className="p-4 md:p-8 max-w-5xl mx-auto">
+            
+            {/* Header & Actions */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                <div>
+                    <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Quiz Results</h1>
+                    <p className="text-slate-500">
+                        {attempt.exam.name} • <span className="font-medium text-slate-700">{attempt.subject.name} ({attempt.year})</span>
+                    </p>
+                </div>
+                <div className="flex gap-3">
+                    <Button asChild variant="outline" className="bg-white">
+                        <Link href="/dashboard">
+                            <Home className="w-4 h-4 mr-2" /> Dashboard
+                        </Link>
+                    </Button>
+                    <Button asChild>
+                        <Link href={retryLink}>
+                            <RotateCcw className="w-4 h-4 mr-2" /> Retry Quiz
+                        </Link>
+                    </Button>
+                </div>
+            </div>
 
-      {/* --- Main Summary Card --- */}
-      <Card className="mb-8">
-        <CardContent className="flex flex-col items-center p-6 space-y-6">
-          {/* Score Circle */}
-          <ScoreCircle score={attempt.score} />
-          
-          <h2 className="text-3xl font-semibold">
-            {attempt.score >= 50 ? "Well Done!" : "Keep Practicing!"}
-          </h2>
+            {/* Summary Section */}
+            <ResultSummary 
+                score={attempt.score} 
+                correct={attempt.correct} 
+                total={attempt.total} 
+                timeFormatted={timeFormatted} 
+            />
 
-          {/* Stats Grid (as per wireframe) */}
-          <div className="w-full grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard 
-              title="Correct" 
-              value={attempt.correct} 
-              icon={<Check className="w-4 h-4 text-green-500" />} 
-            />
-            <StatCard 
-              title="Incorrect" 
-              value={attempt.total - attempt.correct} 
-              icon={<AlertCircle className="w-4 h-4 text-red-500" />} 
-            />
-            <StatCard 
-              title="Total" 
-              value={attempt.total} 
-              icon={<Hash className="w-4 h-4 text-muted-foreground" />} 
-            />
-            <StatCard 
-              title="Time Taken" 
-              value={timeFormatted} 
-              icon={<Clock className="w-4 h-4 text-muted-foreground" />} 
-            />
-          </div>
+            {/* Review Section */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 md:p-8">
+                <QuizReview userAnswers={attempt.userAnswers} />
+            </div>
 
-          {/* Action Buttons (as per wireframe) */}
-          <div className="flex w-full gap-4">
-            <Button asChild size="lg" className="flex-1">
-              <Link href="/dashboard">Back to Dashboard</Link>
-            </Button>
-            <Button asChild variant="outline" size="lg" className="flex-1">
-              <Link href={`/quiz/${attempt.exam.shortName.toLowerCase()}/${attempt.subject.name.toLowerCase().replace(/\s+/g, '-')}/${attempt.year}`}>
-                Retry Quiz
-              </Link>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-      
-      {/* --- Answer Review Section --- */}
-      <QuizReview userAnswers={attempt.userAnswers} />
-      
+        </div>
+      </main>
     </div>
   );
 }

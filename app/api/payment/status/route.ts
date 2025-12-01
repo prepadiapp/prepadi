@@ -1,7 +1,7 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
-import { UserRole } from '@prisma/client';
+import { UserRole, OrderStatus } from '@prisma/client';
 
 export async function GET(request: Request) {
   const session = await getAuthSession();
@@ -33,9 +33,33 @@ export async function GET(request: Request) {
     });
   }
 
-  // 2. Determine Status
+  // 2. Determine Payment Status
   const missingSubscription = !subscription;
-  const needsPayment = subscription ? (!subscription.isActive && subscription.plan.price > 0) : false;
+  
+  let needsPayment = false;
+
+  if (subscription) {
+    const isPaidPlan = subscription.plan.price > 0;
+    // Local Date Check: Is the end date in the past?
+    const hasExpired = subscription.endDate ? new Date(subscription.endDate) < new Date() : false;
+    
+    // User needs to pay if:
+    // A. Plan is Paid AND (Subscription is marked Inactive OR Date has Expired)
+    if (isPaidPlan && (!subscription.isActive || hasExpired)) {
+       needsPayment = true;
+    }
+  }
+
+  // 3. Check for Payment History to differentiate "New" vs "Expired"
+  // If the user has NEVER had a successful order, they are a new user pending activation.
+  const successfulOrders = await prisma.order.count({
+    where: {
+      userId: userId,
+      status: OrderStatus.SUCCESSFUL
+    }
+  });
+
+  const isNewUser = successfulOrders === 0;
 
   return NextResponse.json({
     authenticated: true,
@@ -43,5 +67,6 @@ export async function GET(request: Request) {
     missingSubscription,
     needsPayment,
     planId: subscription?.planId,
+    isNewUser, 
   });
 }

@@ -40,19 +40,33 @@ export const Paystack = {
   /**
    * Initialize a transaction
    */
-  initialize: async (email: string, amount: number, callbackUrl: string, metadata: any = {}): Promise<InitializeResponse> => {
+  initialize: async (
+    email: string, 
+    amount: number, 
+    callbackUrl: string, 
+    metadata: any = {}, 
+    reference?: string // <--- Added optional reference
+  ): Promise<InitializeResponse> => {
+    
+    const payload: any = {
+      email,
+      amount: amount * 100, // Convert Naira to Kobo
+      callback_url: callbackUrl,
+      metadata,
+    };
+
+    // Only add reference if it exists to avoid overwriting Paystack auto-gen with empty string
+    if (reference) {
+      payload.reference = reference;
+    }
+
     const res = await fetch(`${PAYSTACK_BASE_URL}/transaction/initialize`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${SECRET_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        email,
-        amount: amount * 100, // Convert Naira to Kobo
-        callback_url: callbackUrl,
-        metadata,
-      }),
+      body: JSON.stringify(payload),
     });
     return res.json();
   },

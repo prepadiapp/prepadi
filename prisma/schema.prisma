@@ -35,8 +35,8 @@ model User {
   
   // --- SaaS Relations ---
   organizationId  String?
-  organization    Organization? @relation("OrgMembers", fields: [organizationId], references: [id])
-  ownedOrganization Organization? @relation("OrgOwner")
+  organization    Organization? @relation("OrgMembers", fields: [organizationId], references: [id], onDelete: SetNull) // If org deleted, user stays but leaves org
+  ownedOrganization Organization? @relation("OrgOwner") // One-to-one relation, handled on Org side
   
   // A user (Student) can have a subscription directly
   subscription    Subscription? 
@@ -77,7 +77,7 @@ model Organization {
   id        String   @id @default(cuid())
   name      String
   ownerId   String   @unique
-  owner     User     @relation("OrgOwner", fields: [ownerId], references: [id])
+  owner     User     @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: Cascade) // Delete Org if Owner is deleted
   members   User[]   @relation("OrgMembers")
   
   // --- SaaS Relations ---
@@ -132,13 +132,13 @@ model Subscription {
   
   // Links
   userId         String?  @unique // For individual students
-  user           User?    @relation(fields: [userId], references: [id])
+  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade) // Delete sub if user deleted
   
   organizationId String?  @unique // For organizations
-  organization   Organization? @relation(fields: [organizationId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade) // Delete sub if org deleted
   
   planId         String
-  plan           Plan     @relation(fields: [planId], references: [id])
+  plan           Plan     @relation(fields: [planId], references: [id]) // Prevent deleting plan if subs exist? Or cascade? Usually keep plan history.
   
   startDate      DateTime @default(now())
   endDate        DateTime? // Null means forever (e.g. free plan) or auto-renew logic
@@ -155,10 +155,10 @@ model Subscription {
 model Order {
   id             String      @id @default(cuid())
   userId         String      // Who initiated the payment
-  user           User        @relation(fields: [userId], references: [id])
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade) // Delete order history if user is deleted
   
   planId         String
-  plan           Plan        @relation(fields: [planId], references: [id])
+  plan           Plan        @relation(fields: [planId], references: [id]) // Keep orders even if plan deleted? Usually safer to restrict plan deletion.
   
   amount         Int
   currency       String
@@ -174,7 +174,7 @@ model Order {
 model Transaction {
   id             String   @id @default(cuid())
   orderId        String   @unique
-  order          Order    @relation(fields: [orderId], references: [id])
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade) // Delete transaction if order deleted
   
   amount         Int
   currency       String
@@ -225,10 +225,10 @@ model Question {
   exam        Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
   
   sectionId   String?
-  section     Section?  @relation(fields: [sectionId], references: [id])
+  section     Section?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
 
   organizationId String? 
-  organization   Organization? @relation(fields: [organizationId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade) // If org deleted, delete their custom questions
 
   options     Option[]
   userAnswers UserAnswer[]
@@ -273,7 +273,7 @@ model QuizAttempt {
   mode        QuizMode @default(EXAM) // Exam (Timed) vs Practice (Untimed)
 
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade) // Delete history if user deleted
   subjectId   String
   subject     Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   examId      String
