@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { Paystack } from '@/lib/payment/paystack';
 import { PaymentService } from '@/lib/payment/payment-service';
 import { NextResponse } from 'next/server';
-import { randomUUID } from 'crypto';
+
 
 export async function POST(request: Request) {
   try {
@@ -21,8 +21,9 @@ export async function POST(request: Request) {
     const plan = await prisma.plan.findUnique({ where: { id: planId } });
     if (!plan) return new NextResponse('Invalid Plan', { status: 404 });
 
-    // 2. Generate Unique Reference
-    const reference = `PREP_${randomUUID()}`;
+    // 2. Generate Unique Reference using the universal 'crypto' API
+    // This uses the global 'crypto' object available in Next.js/Vercel.
+    const reference = `PREP_${crypto.randomUUID()}`;
 
     // 3. Create Pending Order in DB
     // We create the order HERE with 'reference'.
