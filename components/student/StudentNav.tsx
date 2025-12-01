@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, LineChart, BookOpen, User, Menu, CreditCard } from 'lucide-react';
+import { Home, LineChart, BookOpen, User, Menu, CreditCard, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
 import { SignOutButton } from '@/components/SignOutButton';
+import { Card, CardContent } from '@/components/ui/card';
 
 const navItems = [
   { href: '/dashboard', label: 'Home', icon: Home },
@@ -15,7 +16,11 @@ const navItems = [
   { href: '/dashboard/profile', label: 'Profile', icon: User },
 ];
 
-export function StudentNav() {
+interface StudentNavProps {
+    isPro: boolean;
+}
+
+export function StudentNav({ isPro }: StudentNavProps) {
   const pathname = usePathname();
 
   // Desktop Sidebar
@@ -24,7 +29,8 @@ export function StudentNav() {
       <div className="p-6 border-b">
         <h1 className="text-2xl font-bold text-primary tracking-tight">Prepadi</h1>
       </div>
-      <nav className="flex-1 p-4 space-y-2">
+      
+      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
         {navItems.map((item) => (
           <Button
             key={item.href}
@@ -42,7 +48,27 @@ export function StudentNav() {
           </Button>
         ))}
       </nav>
-      <div className="p-4 border-t">
+
+      <div className="p-4 border-t bg-slate-50/50">
+        {/* --- UPGRADE CARD (Only if Free Plan) --- */}
+        {!isPro && (
+            <Card className="bg-gradient-to-br from-blue-600 to-indigo-600 border-none shadow-md mb-4 overflow-hidden relative group">
+                <div className="absolute top-0 right-0 -mt-4 -mr-4 w-16 h-16 bg-white/20 rounded-full blur-xl group-hover:bg-white/30 transition-all" />
+                <CardContent className="p-4 relative z-10">
+                    <div className="flex items-center gap-2 mb-2 text-white">
+                        <Sparkles className="w-4 h-4 text-yellow-300 fill-yellow-300" />
+                        <span className="font-bold text-sm">Go Pro</span>
+                    </div>
+                    <p className="text-xs text-blue-100 mb-3 leading-relaxed">
+                        Unlock unlimited access and advanced analytics.
+                    </p>
+                    <Button asChild size="sm" variant="secondary" className="w-full h-8 text-xs font-bold text-blue-700 hover:bg-blue-50 shadow-sm">
+                        <Link href="/dashboard/billing">Upgrade</Link>
+                    </Button>
+                </CardContent>
+            </Card>
+        )}
+
         <Button asChild variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground mb-2">
             <Link href="/dashboard/billing">
                 <CreditCard className="w-4 h-4 mr-3"/> Billing
@@ -53,7 +79,7 @@ export function StudentNav() {
     </div>
   );
 
-  // Mobile Bottom Tab Bar
+  // Mobile Bottom Tab Bar (Unchanged)
   const BottomNav = () => (
     <div className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t h-16 flex items-center justify-around z-50 pb-safe">
       {navItems.map((item) => {
@@ -75,7 +101,7 @@ export function StudentNav() {
     </div>
   );
 
-  // Mobile Top Header
+  // Mobile Top Header (Unchanged)
   const MobileHeader = () => (
     <div className="md:hidden flex items-center justify-between px-4 py-3 border-b bg-white sticky top-0 z-40">
       <h1 className="text-lg font-bold text-primary tracking-tight">Prepadi</h1>
@@ -92,6 +118,14 @@ export function StudentNav() {
            </SheetHeader>
            <div className="flex flex-col h-full mt-6">
              <nav className="space-y-2">
+                {!isPro && (
+                   <Button asChild className="w-full justify-start bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 border-none">
+                        <Link href="/dashboard/billing">
+                            <Sparkles className="w-4 h-4 mr-2 text-yellow-300 fill-yellow-300" />
+                            Upgrade to Pro
+                        </Link>
+                   </Button>
+                )}
                 <Button asChild variant="outline" className="w-full justify-start">
                     <Link href="/dashboard/billing">
                         <CreditCard className="w-4 h-4 mr-2" />

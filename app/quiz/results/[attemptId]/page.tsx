@@ -97,7 +97,8 @@ export default async function ResultsPage({ params }: { params: Promise<{ attemp
     redirect('/login');
   }
 
-  const attempt = await prisma.quizAttempt.findUnique({
+  // 1. Fetch Quiz Attempt
+  const attemptQuery = prisma.quizAttempt.findUnique({
     where: { id: attemptId, userId: session.user.id },
     include: {
       exam: true,
@@ -112,10 +113,30 @@ export default async function ResultsPage({ params }: { params: Promise<{ attemp
     },
   });
 
+  // 2. Fetch User Subscription Status (For StudentNav)
+  const userQuery = prisma.user.findUnique({
+    where: { id: session.user.id },
+    include: { 
+        subscription: { include: { plan: true } },
+        ownedOrganization: { include: { subscription: { include: { plan: true } } } }
+    }
+  });
+
+  // Run in parallel
+  const [attempt, user] = await prisma.$transaction([attemptQuery, userQuery]);
+
+  // Calculate isPro status
+  let activeSub = null;
+  if (user?.subscription?.isActive) activeSub = user.subscription;
+  else if (user?.ownedOrganization?.subscription?.isActive) activeSub = user.ownedOrganization.subscription;
+  
+  const isPro = (activeSub?.plan?.price || 0) > 0;
+
+
   if (!attempt) {
     return (
       <div className="min-h-screen bg-slate-50/50 pb-20 md:pb-0">
-        <StudentNav />
+        <StudentNav isPro={isPro} />
         <main className="md:pl-64 min-h-screen transition-all p-4 md:p-8 flex items-center justify-center">
             <Alert variant="destructive" className="max-w-md bg-white shadow-lg">
             <AlertCircle className="h-4 w-4" />
@@ -137,7 +158,7 @@ export default async function ResultsPage({ params }: { params: Promise<{ attemp
 
   return (
     <div className="min-h-screen bg-slate-50/50 pb-20 md:pb-0">
-      <StudentNav />
+      <StudentNav isPro={isPro} />
       <main className="md:pl-64 min-h-[calc(100vh-4rem)] md:min-h-screen transition-all">
         <div className="p-4 md:p-8 max-w-5xl mx-auto">
             
