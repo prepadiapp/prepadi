@@ -15,11 +15,12 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import {
-  ChevronLeft, ChevronRight, Flag, Loader2, Lock, Timer, AlertCircle, Menu, X
+  ChevronLeft, ChevronRight, Flag, Loader2, Lock, Timer, AlertCircle, Menu, BookOpen
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import DOMPurify from 'isomorphic-dompurify'; // Ensure you install: npm install isomorphic-dompurify
 
 interface QuizClientProps {
   initialQuestions: SanitizedQuestion[];
@@ -57,6 +58,19 @@ function QuizTimer({ expiryTimestamp }: { expiryTimestamp: Date }) {
       </div>
       <Progress value={progress} className="w-32 md:w-48 h-1.5 mt-1" />
     </div>
+  );
+}
+
+// --- Helper: Safe HTML Renderer ---
+function SafeHTML({ html, className }: { html: string; className?: string }) {
+  // Configure DOMPurify to allow specific tags if needed, otherwise defaults are safe
+  const sanitizedHtml = DOMPurify.sanitize(html);
+  
+  return (
+    <div 
+      className={className}
+      dangerouslySetInnerHTML={{ __html: sanitizedHtml }} 
+    />
   );
 }
 
@@ -182,7 +196,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
     <div className="flex flex-col md:flex-row min-h-screen bg-slate-50/50">
       
       {/* --- Main Area --- */}
-      <div className="flex-1 flex flex-col p-3 md:p-4 max-w-4xl mx-auto w-full">
+      <div className="flex-1 flex flex-col p-3 md:p-4 max-w-4xl mx-auto w-full h-[calc(100vh-64px)] md:h-screen overflow-y-auto">
         {/* Header */}
         <header className="flex flex-col gap-3 mb-3 md:mb-4 flex-shrink-0">
           <div className="flex justify-between items-start">
@@ -214,15 +228,15 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
 
           {/* Timer Bar */}
           {mode === 'EXAM' && startTime && (
-             <div className="w-full flex justify-center bg-white p-2 rounded-xl shadow-sm border border-slate-100">
+             <div className="w-full flex justify-center bg-white p-2 md:p-3 rounded-xl shadow-sm border border-slate-100">
                 <QuizTimer expiryTimestamp={expiryTimestamp} />
              </div>
           )}
         </header>
 
         {/* Question Card */}
-        <Card className="flex flex-col shadow-sm border-slate-200">
-          <CardHeader className="pb-3 bg-white border-b border-slate-100">
+        <Card className="flex-1 flex flex-col shadow-sm border-slate-200 overflow-hidden min-h-0">
+          <CardHeader className="pb-3 bg-white border-b border-slate-100 flex-shrink-0">
             <div className="flex justify-between items-center">
                 <CardTitle className="text-base font-semibold">Question {currentIndex + 1}</CardTitle>
                 <span className="text-xs font-medium text-muted-foreground bg-slate-100 px-2 py-1 rounded-md uppercase tracking-wider">
@@ -231,13 +245,50 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
             </div>
           </CardHeader>
           
-          <div className="bg-white/50">
-            <div className="p-4 md:p-6 space-y-4">
-                <div className="prose prose-slate prose-sm md:prose-base max-w-none text-foreground leading-relaxed font-medium">
-                {currentQuestion.text.split('\n').map((line, i) => (
-                    <p key={i} className="mb-2 last:mb-0">{line}</p>
-                ))}
-                </div>
+          <div className="flex-1 overflow-y-auto bg-white/50">
+            <div className="p-6 space-y-6">
+                
+                {/* --- SECTION DISPLAY (Instruction/Passage) --- */}
+                {currentQuestion.section && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
+                        <div className="flex items-center gap-2 mb-2 text-muted-foreground">
+                            <BookOpen className="w-4 h-4" />
+                            <span className="text-xs font-bold uppercase tracking-wider">Instruction</span>
+                        </div>
+                        <SafeHTML 
+                           html={currentQuestion.section.instruction} 
+                           className="text-sm font-medium text-slate-800 mb-2 prose prose-sm max-w-none" 
+                        />
+                        {currentQuestion.section.passage && (
+                             <div className="border-t border-slate-200 pt-2 mt-2">
+                                <SafeHTML 
+                                   html={currentQuestion.section.passage} 
+                                   className="text-sm text-slate-600 leading-relaxed prose prose-sm max-w-none"
+                                />
+                             </div>
+                        )}
+                    </div>
+                )}
+
+                {/* --- IMAGE DISPLAY --- */}
+                {currentQuestion.imageUrl && (
+                    <div className="mb-4 rounded-lg overflow-hidden border border-slate-200">
+                        <img 
+                            src={currentQuestion.imageUrl} 
+                            alt="Question Diagram" 
+                            className="w-full h-auto max-h-64 object-contain bg-slate-50"
+                            onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none'; // Hide broken images
+                            }}
+                        />
+                    </div>
+                )}
+
+                {/* --- QUESTION TEXT (Sanitized HTML) --- */}
+                <SafeHTML 
+                    html={currentQuestion.text} 
+                    className="prose prose-slate prose-sm md:prose-base max-w-none text-foreground leading-relaxed font-medium"
+                />
                 
                 <RadioGroup
                     value={currentAnswer}
@@ -256,9 +307,12 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
                         onClick={() => selectAnswer(currentQuestion.id, option.id)}
                     >
                     <RadioGroupItem value={option.id} id={option.id} className="mt-1 border-slate-400 text-primary" />
-                    <label htmlFor={option.id} className="flex-1 text-sm md:text-base cursor-pointer leading-snug text-slate-700 group-hover:text-slate-900">
-                        <span className="font-bold mr-2 text-slate-400 group-hover:text-slate-500">{String.fromCharCode(65 + index)}.</span>
-                        {option.text}
+                    <label htmlFor={option.id} className="flex-1 cursor-pointer leading-snug text-slate-700 group-hover:text-slate-900">
+                        <div className="flex gap-2">
+                             <span className="font-bold mr-1 text-slate-400 group-hover:text-slate-500 shrink-0 pt-0.5">{String.fromCharCode(65 + index)}.</span>
+                             {/* --- OPTION TEXT (Sanitized HTML) --- */}
+                             <SafeHTML html={option.text} className="text-sm md:text-base" />
+                        </div>
                     </label>
                     </div>
                 ))}
@@ -266,7 +320,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
             </div>
           </div>
 
-          <CardFooter className="flex flex-col gap-4 pt-4 pb-6 border-t bg-white border-slate-100">
+          <CardFooter className="flex flex-col gap-4 pt-6 pb-6 border-t bg-white border-slate-100 z-10 flex-shrink-0">
             <div className="flex justify-between w-full">
                 <Button 
                     variant="outline" 
@@ -294,15 +348,14 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
                 )}
             </div>
             
-            {/* Secondary Link to Submit Early (Always visible if not last question) */}
+            {/* Secondary Link to Submit Early */}
             {!isLastQuestion && (
-                <Button 
-                    variant="secondary"
+                <button 
                     onClick={() => setIsSubmitDialogOpen(true)}
-                    className="w-full bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 transition-colors"
+                    className="text-xs text-muted-foreground hover:text-destructive transition-colors flex items-center justify-center w-full py-2"
                 >
-                    <Flag className="w-4 h-4 mr-2" /> Submit Exam Early
-                </Button>
+                    <Flag className="w-3 h-3 mr-1" /> Submit Exam Early
+                </button>
             )}
           </CardFooter>
         </Card>
