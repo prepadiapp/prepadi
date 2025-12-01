@@ -38,12 +38,12 @@ export const sendVerificationEmail = async (email: string, token: string) => {
 
   try {
     const { data, error } = await resend.emails.send({
-      from: 'PrepPadi <onboarding@resend.dev>', // Note: Resend requires a verified domain in production.
+      from: 'Prepadi <onboarding@resend.dev>', // Note: Resend requires a verified domain in production.
       to: [email],
-      subject: 'Verify your email for PrepPadi',
+      subject: 'Verify your email for Prepadi',
       html: `
         <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-          <h1 style="color: #333;">Welcome to PrepPadi!</h1>
+          <h1 style="color: #333;">Welcome to Prepadi!</h1>
           <p>
             Thank you for signing up. Please click the button below to verify your email address
             and complete your registration.

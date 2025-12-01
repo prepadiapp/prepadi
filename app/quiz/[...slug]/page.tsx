@@ -3,56 +3,40 @@ import { prisma } from '@/lib/prisma';
 import { questionService } from '@/lib/question-service/question-service';
 import { redirect } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2, Lock } from 'lucide-react';
 import { QuizClient } from '@/components/QuizClient';
-import { SanitizedQuestion } from '@/stores/quizStore';
-// FIX: Import the Prisma models (Question, Option, Section) needed for type assertion
+import { SanitizedQuestion, QuizMode } from '@/stores/quizStore';
 import { Question, Option, Section } from '@prisma/client'; 
+import { verifyUserAccess } from '@/lib/access-control';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 interface QuizPageProps {
-  params: Promise<{
-    slug?: string[]; // e.g., ['waec', 'mathematics', '2023']
-  }>;
+  params: Promise<{ slug: string[] }>;
+  searchParams: Promise<{ mode?: string }>;
 }
 
-/**
- * Define the expected full type returned by questionService.getQuestions,
- * which includes the necessary relations (options and section).
- */
 type QuestionWithRelations = Question & {
     options: Option[];
     section: Section | null;
 };
 
-/**
- * Fetches and validates all the data needed for the quiz.
- * This function runs entirely on the server.
- */
 async function getQuizData(slug: string[] | undefined) {
   try {
-    // 1. Validate user
     const session = await getAuthSession();
     if (!session?.user) {
       redirect('/login');
     }
 
-    // 2. Validate slug
-    if (!slug) {
-      throw new Error('Invalid quiz URL. No quiz parameters were provided.');
-    }
-
-    if (slug.length !== 3) {
-      throw new Error('Invalid quiz URL. Expected /quiz/[exam]/[subject]/[year]');
+    if (!slug || slug.length !== 3) {
+      throw new Error('Invalid quiz URL.');
     }
 
     const [examSlug, subjectSlug, yearStr] = slug;
     const year = parseInt(yearStr);
 
-    if (isNaN(year)) {
-      throw new Error('Invalid year in URL.');
-    }
+    if (isNaN(year)) throw new Error('Invalid year.');
 
-    // 3. Find IDs from DB (case-insensitive)
     const exam = await prisma.exam.findFirst({
       where: { shortName: { equals: examSlug, mode: 'insensitive' } },
     });
@@ -66,15 +50,23 @@ async function getQuizData(slug: string[] | undefined) {
       },
     });
 
-    if (!exam) {
-      throw new Error(`Exam type "${examSlug}" not found.`);
-    }
-    if (!subject) {
-      throw new Error(`Subject "${subjectSlug.replace(/-/g, ' ')}" not found.`);
+    if (!exam || !subject) {
+      throw new Error(`Exam type or Subject not found.`);
     }
 
-    // 4. Call our "Smart" Question Service
-    // FIX: Assert the return type to QuestionWithRelations[]
+    // --- NEW: Check Plan Permissions ---
+    const access = await verifyUserAccess(session.user.id, {
+        examId: exam.id,
+        subjectId: subject.id,
+        year: year
+    });
+
+    if (!access.allowed) {
+        // Throw a specific error to handle in UI
+        throw new Error(`ACCESS_DENIED:${access.reason}`);
+    }
+    // -----------------------------------
+
     const questions = (await questionService.getQuestions(
         exam.id, 
         subject.id, 
@@ -82,19 +74,16 @@ async function getQuizData(slug: string[] | undefined) {
     )) as QuestionWithRelations[];
 
     if (questions.length === 0) {
-      throw new Error('No questions could be found for this selection. Please try a different year or subject.');
+      throw new Error('No questions found.');
     }
 
-    // 5. Sanitize the questions
     const sanitizedQuestions: SanitizedQuestion[] = questions.map((q) => ({
       id: q.id,
       text: q.text,
       year: q.year,
-      // FIX: Add the missing required properties from the SanitizedQuestion type
       type: q.type,
       imageUrl: q.imageUrl,
       sectionId: q.sectionId,
-      // The type assertion above allows us to safely access q.section here
       section: q.section ? {
         instruction: q.section.instruction,
         passage: q.section.passage,
@@ -105,7 +94,6 @@ async function getQuizData(slug: string[] | undefined) {
       })),
     }));
     
-    // 6. Return all data
     return {
       data: {
         questions: sanitizedQuestions,
@@ -119,46 +107,54 @@ async function getQuizData(slug: string[] | undefined) {
     };
 
   } catch (error: any) {
-    console.error('[QUIZ_PAGE_ERROR]', error);
+    // Preserve the specific access denied message if present
+    const msg = error.message || 'An unknown error occurred.';
     return {
       data: null,
-      error: error.message || 'An unknown error occurred.',
+      error: msg,
     };
   }
 }
 
-
-export default async function QuizPage({ params }: QuizPageProps) {
-  
+export default async function QuizPage({ params, searchParams }: QuizPageProps) {
   const resolvedParams = await params;
-
-  
-  console.log(
-    `[QuizPage Server Component] Page loading. Received params:`,
-    JSON.stringify(resolvedParams, null, 2)
-  );
+  const resolvedSearchParams = await searchParams;
   
   const { data, error } = await getQuizData(resolvedParams.slug);
+  
+  const modeParam = resolvedSearchParams.mode?.toUpperCase();
+  const mode: QuizMode = modeParam === 'PRACTICE' ? 'PRACTICE' : 'EXAM';
 
-  // If there was an error, show an error message
   if (error) {
+    // Check if it's an access denied error to show a better UI
+    const isAccessDenied = error.startsWith('ACCESS_DENIED:');
+    const cleanError = isAccessDenied ? error.replace('ACCESS_DENIED:', '') : error;
+
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Alert variant="destructive" className="max-w-lg">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error Loading Quiz</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+      <div className="flex items-center justify-center min-h-screen p-4 bg-muted/20">
+        <Alert variant="destructive" className="max-w-lg shadow-lg bg-white">
+          {isAccessDenied ? <Lock className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
+          <AlertTitle className="text-lg font-semibold mb-2">
+            {isAccessDenied ? 'Plan Restriction' : 'Error Loading Quiz'}
+          </AlertTitle>
+          <AlertDescription className="text-base text-muted-foreground mb-4">
+            {cleanError}
+          </AlertDescription>
+          {isAccessDenied && (
+              <Button asChild variant="default" className="w-full">
+                  <Link href="/dashboard/billing">Upgrade Plan</Link>
+              </Button>
+          )}
         </Alert>
       </div>
     );
   }
 
-
   if (!data) {
     return (
       <div className="flex items-center justify-center min-h-screen flex-col">
         <Loader2 className="w-12 h-12 animate-spin text-primary" />
-        <p className="mt-4 text-lg text-muted-foreground">Loading quiz...</p>
+        <p className="mt-4 text-sm text-muted-foreground">Loading quiz...</p>
       </div>
     );
   }
@@ -167,6 +163,7 @@ export default async function QuizPage({ params }: QuizPageProps) {
     <QuizClient
       initialQuestions={data.questions}
       quizDetails={data.quizDetails}
+      mode={mode}
     />
   );
 }

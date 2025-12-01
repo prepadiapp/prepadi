@@ -3,64 +3,102 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { sendVerificationEmail } from '@/lib/mail';
 import { randomUUID } from 'crypto';
+import { UserRole, PlanInterval } from '@prisma/client';
+
+interface SignupBody {
+  name: string;
+  email: string;
+  password: string;
+  role: UserRole;
+  planId: string;
+  orgName?: string;
+}
+
+function calculateEndDate(interval: PlanInterval): Date | null {
+  const date = new Date();
+  switch (interval) {
+    case PlanInterval.MONTHLY: date.setMonth(date.getMonth() + 1); return date;
+    case PlanInterval.QUARTERLY: date.setMonth(date.getMonth() + 3); return date;
+    case PlanInterval.BIANNUALLY: date.setMonth(date.getMonth() + 6); return date;
+    case PlanInterval.YEARLY: date.setFullYear(date.getFullYear() + 1); return date;
+    case PlanInterval.LIFETIME: return null;
+    default: return new Date();
+  }
+}
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { name, email, password } = body;
+    const body: SignupBody = await request.json();
+    const { name, email, password, role, planId, orgName } = body;
 
-    // --- 1. Validation ---
-    if (!name || !email || !password) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    if (!name || !email || !password || !planId) {
+      return new NextResponse('Missing required fields', { status: 400 });
     }
 
-    if (password.length < 6) {
-      return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
-    }
+    const plan = await prisma.plan.findUnique({ where: { id: planId } });
+    if (!plan) return new NextResponse('Invalid Plan selected', { status: 400 });
 
-    // --- 2. Check if user already exists ---
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) return new NextResponse('User already exists', { status: 409 });
 
-    if (existingUser) {
-      return NextResponse.json({ error: 'User with this email already exists' }, { status: 409 });
-    }
-
-    // --- 3. Hash the password ---
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // --- 4. Create the User (as unverified) ---
-    const user = await prisma.user.create({
-      data: {
-        email,
-        name,
-        hashedPassword,
-        // emailVerified will remain null for now
-      },
+    await prisma.$transaction(async (tx) => {
+      // A. Create User
+      const user = await tx.user.create({
+        data: { name, email, hashedPassword, role },
+      });
+
+      // B. Handle Org
+      let organizationId: string | null = null;
+      if (role === UserRole.ORGANIZATION) {
+        if (!orgName) throw new Error('Organization Name is required');
+        const org = await tx.organization.create({
+          data: { name: orgName, ownerId: user.id },
+        });
+        await tx.user.update({
+          where: { id: user.id },
+          data: { ownedOrganization: { connect: { id: org.id } } }
+        });
+        organizationId = org.id;
+      }
+
+      // C. Create Subscription
+      const isPaidPlan = plan.price > 0;
+      const endDate = calculateEndDate(plan.interval);
+      
+      const userIdToLink = role === UserRole.STUDENT ? user.id : null;
+      const orgIdToLink = role === UserRole.ORGANIZATION ? organizationId : null;
+
+      await tx.subscription.create({
+        data: {
+          planId: plan.id,
+          startDate: new Date(),
+          endDate: endDate,
+          isActive: !isPaidPlan,
+          userId: userIdToLink,
+          organizationId: orgIdToLink,
+        },
+      });
+
+      // D. Verification
+      const token = randomUUID();
+      const expires = new Date(new Date().getTime() + 3600 * 1000);
+      await tx.verificationToken.create({
+        data: { identifier: email, token, expires },
+      });
+
+      await sendVerificationEmail(email, token);
     });
 
-    // --- 5. Create a Verification Token ---
-    const token = randomUUID(); // Generate a secure token
-    const expires = new Date(new Date().getTime() + 3600 * 1000); // 1 hour from now
-
-    await prisma.verificationToken.create({
-      data: {
-        identifier: email,
-        token,
-        expires,
-      },
+    return NextResponse.json({ 
+      success: true,
+      requiresPayment: plan.price > 0,
+      planId: plan.id,
     });
 
-    // --- 6. Send the Verification Email ---
-    await sendVerificationEmail(email, token);
-
-    // --- 7. Respond to Client ---
-    // The client will redirect to /verify-email
-    return NextResponse.json({ success: 'User created. Please verify your email.' }, { status: 201 });
-
-  } catch (error) {
-    console.error('SIGNUP_ERROR', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch (error: any) {
+    console.error('[SIGNUP_ERROR]', error);
+    return new NextResponse(error.message || 'Internal Server Error', { status: 500 });
   }
 }
