@@ -182,9 +182,9 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
     <div className="flex flex-col md:flex-row min-h-screen bg-slate-50/50">
       
       {/* --- Main Area --- */}
-      <div className="flex-1 flex flex-col p-4 md:p-6 max-w-4xl mx-auto w-full h-[calc(100vh-64px)] md:h-screen overflow-y-auto">
+      <div className="flex-1 flex flex-col p-3 md:p-4 max-w-4xl mx-auto w-full">
         {/* Header */}
-        <header className="flex flex-col gap-4 mb-4 md:mb-6 flex-shrink-0">
+        <header className="flex flex-col gap-3 mb-3 md:mb-4 flex-shrink-0">
           <div className="flex justify-between items-start">
             <div>
                 <h1 className="text-lg md:text-xl font-bold leading-tight text-foreground">{quizDetails.examName}</h1>
@@ -214,14 +214,14 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
 
           {/* Timer Bar */}
           {mode === 'EXAM' && startTime && (
-             <div className="w-full flex justify-center bg-white p-2 md:p-3 rounded-xl shadow-sm border border-slate-100">
+             <div className="w-full flex justify-center bg-white p-2 rounded-xl shadow-sm border border-slate-100">
                 <QuizTimer expiryTimestamp={expiryTimestamp} />
              </div>
           )}
         </header>
 
         {/* Question Card */}
-        <Card className="flex-1 flex flex-col shadow-sm border-slate-200 overflow-hidden">
+        <Card className="flex flex-col shadow-sm border-slate-200">
           <CardHeader className="pb-3 bg-white border-b border-slate-100">
             <div className="flex justify-between items-center">
                 <CardTitle className="text-base font-semibold">Question {currentIndex + 1}</CardTitle>
@@ -231,8 +231,8 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
             </div>
           </CardHeader>
           
-          <ScrollArea className="flex-1 bg-white/50">
-            <CardContent className="space-y-6 pt-6 pb-6">
+          <div className="bg-white/50">
+            <div className="p-4 md:p-6 space-y-4">
                 <div className="prose prose-slate prose-sm md:prose-base max-w-none text-foreground leading-relaxed font-medium">
                 {currentQuestion.text.split('\n').map((line, i) => (
                     <p key={i} className="mb-2 last:mb-0">{line}</p>
@@ -263,10 +263,10 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
                     </div>
                 ))}
                 </RadioGroup>
-            </CardContent>
-          </ScrollArea>
+            </div>
+          </div>
 
-          <CardFooter className="flex flex-col gap-4 pt-6 pb-6 border-t bg-white border-slate-100 z-10">
+          <CardFooter className="flex flex-col gap-4 pt-4 pb-6 border-t bg-white border-slate-100">
             <div className="flex justify-between w-full">
                 <Button 
                     variant="outline" 
@@ -296,12 +296,13 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
             
             {/* Secondary Link to Submit Early (Always visible if not last question) */}
             {!isLastQuestion && (
-                <button 
+                <Button 
+                    variant="secondary"
                     onClick={() => setIsSubmitDialogOpen(true)}
-                    className="text-xs text-muted-foreground hover:text-destructive transition-colors flex items-center justify-center w-full py-2"
+                    className="w-full bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 transition-colors"
                 >
-                    <Flag className="w-3 h-3 mr-1" /> Submit Exam Early
-                </button>
+                    <Flag className="w-4 h-4 mr-2" /> Submit Exam Early
+                </Button>
             )}
           </CardFooter>
         </Card>
@@ -312,7 +313,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
         <NavigatorContent />
       </aside>
 
-      {/* --- Submit Dialog (Moved outside specific containers to ensure global access) --- */}
+      {/* --- Submit Dialog --- */}
       <Dialog open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
         <DialogContent>
             <DialogHeader>
