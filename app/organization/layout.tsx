@@ -11,7 +11,7 @@ export default async function OrganizationLayout({ children }: { children: React
   }
 
   return (
-    <DashboardGuard userEmail={session.user.email}>
+    <DashboardGuard>
       <div className="min-h-screen bg-muted/20">
         <OrgSidebar />
         <main className="md:pl-64">

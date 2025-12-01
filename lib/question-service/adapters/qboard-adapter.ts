@@ -144,6 +144,14 @@ export class QboardAdapter implements IQuestionAdapter {
         return 'englishlit';
       case 'crk':
         return 'crk';
+      case 'civic education':
+        return 'civiledu';
+      case 'geography':
+        return 'geography';
+      case 'accounting':
+        return 'accounting';
+      case 'commerce':
+        return 'commerce';
       // ... etc.
       default:
         // A simple fallback for simple names

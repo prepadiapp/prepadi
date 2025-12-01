@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Building, GraduationCap, ArrowLeft, Check } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Loader2, Building, GraduationCap, ArrowLeft, Check, XCircle } from "lucide-react";
 import { useSession } from 'next-auth/react';
 
 export default function OnboardingPage() {
@@ -52,6 +52,13 @@ export default function OnboardingPage() {
     setLoading(true);
     setError('');
 
+    // --- Input Validation for Organization ---
+    if (selectedRole === 'ORGANIZATION' && !orgName.trim()) {
+        setError("Please enter an organization name.");
+        setLoading(false);
+        return;
+    }
+
     try {
       // A. Create User/Org/Subscription
       const res = await fetch('/api/onboarding', {
@@ -76,14 +83,16 @@ export default function OnboardingPage() {
           body: JSON.stringify({ planId: selectedPlan?.id }),
         });
 
-        if (!initRes.ok) throw new Error("Payment init failed");
+        if (!initRes.ok) throw new Error("Payment initialization failed.");
         
         const initData = await initRes.json();
         const { reference, amount } = initData; 
 
         // 2. Open Paystack Popup
+        // TypeScript is happy now because of the types/paystack.d.ts file
         const PaystackPop = (await import('@paystack/inline-js')).default;
-        const popup = new PaystackPop();
+        // @ts-ignore: PaystackPop is a class constructor that expects no args when invoked via 'new'
+        const popup = new PaystackPop(); 
         
         popup.newTransaction({
           key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY!, 
@@ -95,7 +104,7 @@ export default function OnboardingPage() {
           },
           onCancel: () => {
             setLoading(false);
-            alert("Payment cancelled.");
+            setError("Payment cancelled by user."); // Replaced alert()
           },
         });
 
@@ -105,7 +114,7 @@ export default function OnboardingPage() {
       }
 
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "An unexpected error occurred during setup.");
       setLoading(false);
     }
   };
@@ -134,12 +143,21 @@ export default function OnboardingPage() {
     }
   };
 
+  const ErrorDisplay = () => error && (
+    <Alert variant="destructive" className="mb-4">
+        <XCircle className="h-4 w-4" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+    </Alert>
+  );
+
   // Step 1: Role Selection
   if (step === 1) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted/20 p-4">
         <div className="max-w-2xl w-full space-y-8 text-center">
           <h1 className="text-3xl font-bold">Finish Setting Up Your Account</h1>
+          <ErrorDisplay />
           <div className="grid md:grid-cols-2 gap-6">
             <Card 
                 className={`cursor-pointer hover:border-primary ${selectedRole === 'STUDENT' ? 'border-primary ring-1 ring-primary' : ''}`} 
@@ -175,6 +193,8 @@ export default function OnboardingPage() {
             <h1 className="text-2xl font-bold">Choose a Plan</h1>
           </div>
           
+          <ErrorDisplay />
+          
           {loading ? (
              <div className="flex justify-center p-12"><Loader2 className="animate-spin w-8 h-8 text-primary"/></div>
           ) : (
@@ -184,26 +204,26 @@ export default function OnboardingPage() {
                     const bullets = (features?.displayBullets as string[]) || [];
                     return (
                     <Card key={plan.id} className="flex flex-col relative overflow-hidden hover:shadow-xl transition-shadow">
-                        <CardHeader>
-                        <CardTitle className="text-xl">{plan.name}</CardTitle>
-                        <div className="text-3xl font-bold mt-2">
-                            {plan.price === 0 ? 'Free' : `₦${plan.price.toLocaleString()}`}
-                            <span className="text-sm font-normal text-muted-foreground ml-1">/ {plan.interval.toLowerCase()}</span>
-                        </div>
-                        <CardDescription className="mt-2">{plan.description}</CardDescription>
-                        </CardHeader>
-                        <CardContent className="flex-1">
-                        <ul className="space-y-2 text-sm">
-                            {bullets.length > 0 ? bullets.map((b, i) => (
-                                <li key={i} className="flex items-start"><Check className="w-4 h-4 mr-2 text-green-500 mt-0.5 shrink-0"/> <span className="text-muted-foreground">{b}</span></li>
-                            )) : (
-                                <li className="flex items-center"><Check className="w-4 h-4 mr-2 text-green-500"/> Full Platform Access</li>
-                            )}
-                        </ul>
-                        </CardContent>
-                        <CardFooter>
-                        <Button className="w-full" onClick={() => { setSelectedPlan(plan); setStep(3); }}>Select</Button>
-                        </CardFooter>
+                      <CardHeader>
+                      <CardTitle className="text-xl">{plan.name}</CardTitle>
+                      <div className="text-3xl font-bold mt-2">
+                          {plan.price === 0 ? 'Free' : `₦${plan.price.toLocaleString()}`}
+                          <span className="text-sm font-normal text-muted-foreground ml-1">/ {plan.interval.toLowerCase()}</span>
+                      </div>
+                      <CardDescription className="mt-2">{plan.description}</CardDescription>
+                      </CardHeader>
+                      <CardContent className="flex-1">
+                      <ul className="space-y-2 text-sm">
+                          {bullets.length > 0 ? bullets.map((b, i) => (
+                              <li key={i} className="flex items-start"><Check className="w-4 h-4 mr-2 text-green-500 mt-0.5 shrink-0"/> <span className="text-muted-foreground">{b}</span></li>
+                          )) : (
+                              <li className="flex items-center"><Check className="w-4 h-4 mr-2 text-green-500"/> Full Platform Access</li>
+                          )}
+                      </ul>
+                      </CardContent>
+                      <CardFooter>
+                      <Button className="w-full" onClick={() => { setSelectedPlan(plan); setStep(3); }}>Select</Button>
+                      </CardFooter>
                     </Card>
                 )})}
             </div>
@@ -219,7 +239,7 @@ export default function OnboardingPage() {
       <Card className="w-full max-w-md">
         <CardHeader><CardTitle>Almost Done</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+          <ErrorDisplay />
           
           {selectedRole === 'ORGANIZATION' && (
             <div className="space-y-2">
