@@ -3,9 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { UserRole } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
-/**
- * GET: Fetch all subjects
- */
 export async function GET(request: Request) {
   const session = await getAuthSession();
   if (!session?.user || session.user.role !== UserRole.ADMIN) {
@@ -14,13 +11,11 @@ export async function GET(request: Request) {
 
   try {
     const subjects = await prisma.subject.findMany({
+      where: { organizationId: null }, // Only fetch global subjects for Admin
       orderBy: { name: 'asc' },
       include: {
         _count: {
-          select: {
-            // We only count "general" questions (not org-specific)
-            questions: { where: { organizationId: null } },
-          },
+          select: { questions: { where: { organizationId: null } } },
         },
       },
     });
@@ -31,9 +26,6 @@ export async function GET(request: Request) {
   }
 }
 
-/**
- * POST: Create a new subject
- */
 export async function POST(request: Request) {
   const session = await getAuthSession();
   if (!session?.user || session.user.role !== UserRole.ADMIN) {
@@ -42,14 +34,16 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { name } = body;
+    const { name, apiSlugs } = body; // <--- Now accepting apiSlugs
 
-    if (!name) {
-      return new NextResponse('Name is required', { status: 400 });
-    }
+    if (!name) return new NextResponse('Name is required', { status: 400 });
 
     const newSubject = await prisma.subject.create({
-      data: { name },
+      data: { 
+          name,
+          apiSlugs: apiSlugs || {}, // Store the JSON
+          organizationId: null // Explicitly global
+      },
     });
     return NextResponse.json(newSubject);
   } catch (error) {

@@ -1,101 +1,82 @@
 import { prisma } from '@/lib/prisma';
-import { Exam, Subject, Question, Option, QuestionType } from '@prisma/client';
-import { IQuestionAdapter, StandardizedQuestion, QuestionWithOptions } from './types';
+import { QuestionWithOptions, StandardizedQuestion, IQuestionAdapter } from './types';
 import { QboardAdapter } from './adapters/qboard-adapter';
-// Import other adapters here in the future
-// import { MyQuestAdapter } from './adapters/myquest-adapter';
 
 class QuestionService {
-  private adapters: IQuestionAdapter[];
+  private adapters: Record<string, IQuestionAdapter>;
 
   constructor() {
-    this.adapters = [
-      new QboardAdapter(),
-      // new MyQuestAdapter(),
-    ];
+    this.adapters = {
+      'qboard': new QboardAdapter(),
+    };
   }
 
   /**
-   * The main public method to get questions.
+   * Main Entry: Get questions for a quiz session.
    */
   public async getQuestions(
     examId: string,
     subjectId: string,
     year: number
   ): Promise<QuestionWithOptions[]> {
-    console.log(`[QuestionService] Attemping to get questions for exam: ${examId}, subject: ${subjectId}, year: ${year}`);
-
-    // 1. Try to fetch from our local database first
-    // We ONLY fetch "general" questions (organizationId: null)
+    
+    // 1. Try Local DB first
     const localQuestions = await prisma.question.findMany({
-      where: {
-        examId,
-        subjectId,
-        year,
-        organizationId: null, 
+      where: { 
+        examId, 
+        subjectId, 
+        year, 
+        organizationId: null 
       },
-      include: {
-        options: true,
-        section: true, // Include section data
+      include: { 
+        options: true, 
+        section: true 
       },
     });
 
-    if (localQuestions.length > 0) {
-      console.log(`[QuestionService] Found ${localQuestions.length} questions in local DB.`);
-      return localQuestions;
+    // If we have data, return it.
+    if (localQuestions.length > 5) {
+        return localQuestions;
     }
 
-    // 2. If no local questions, fetch from external APIs
-    console.log(`[QuestionService] No local questions found. Fetching from external APIs...`);
+    // 2. If empty or low, fetch from external adapters
+    console.log(`[QuestionService] Fetching from adapters...`);
     const fetchedQuestions = await this.fetchFromAdapters(examId, subjectId, year);
 
     if (fetchedQuestions.length === 0) {
-      console.log(`[QuestionService] No questions found from any external API.`);
-      return [];
+        return localQuestions;
     }
 
-    // 3. Save the new questions to our DB
-    console.log(`[QuestionService] Found ${fetchedQuestions.length} questions. Saving to DB...`);
-    const newDbQuestions = await this.bulkCreate(fetchedQuestions);
-    console.log(`[QuestionService] Successfully saved new questions to DB.`);
-
-    return newDbQuestions;
+    // 3. Save & Return
+    const savedQuestions = await this.bulkCreate(fetchedQuestions);
+    return [...localQuestions, ...savedQuestions];
   }
 
   /**
-   * Fetches available years from DB and all adapters.
+   * Get all years available for a specific Exam/Subject combo.
    */
   public async getAvailableYears(examId: string, subjectId: string): Promise<number[]> {
-    console.log(`[Service] Getting available years for exam: ${examId}, subject: ${subjectId}`);
-    
-    // 1. Get years from our local DB (questions we've already cached)
-    // Only look for general questions
+    // 1. Local DB Years
     const localYearsQuery = prisma.question.findMany({
       where: { examId, subjectId, organizationId: null },
       select: { year: true },
       distinct: ['year'],
     });
     
-    // 2. Get years from our adapters
-    const adapterYears = this.fetchAvailableYearsFromAdapters(examId, subjectId);
+    // 2. Adapter Years
+    const adapterYearsResult = this.fetchAvailableYearsFromAdapters(examId, subjectId);
 
-    // 3. Await both promises in parallel
-    const [localYearsResult, adapterYearsResult] = await Promise.all([
-      localYearsQuery,
-      adapterYears,
-    ]);
+    const [localYearsResult, adapterYears] = await Promise.all([localYearsQuery, adapterYearsResult]);
     
-    // 4. Combine and de-duplicate
     const localYears = localYearsResult.map(q => q.year);
-    const combinedYears = new Set([...localYears, ...adapterYearsResult]);
     
-    // Sort descending
-    return Array.from(combinedYears).sort((a, b) => b - a);
+    // Merge and Sort Descending
+    const combined = Array.from(new Set([...localYears, ...adapterYears])).sort((a, b) => b - a);
+    
+    return combined;
   }
 
-  /**
-   * Loops through all available adapters until one returns questions.
-   */
+  // --- Internal Helper: Iterate Adapters to fetch questions ---
   private async fetchFromAdapters(
     examId: string,
     subjectId: string,
@@ -104,145 +85,120 @@ class QuestionService {
     const exam = await prisma.exam.findUnique({ where: { id: examId } });
     const subject = await prisma.subject.findUnique({ where: { id: subjectId } });
 
-    if (!exam || !subject) {
-      console.error('[QuestionService] Could not find Exam or Subject in DB.');
-      return [];
-    }
+    if (!exam || !subject) return [];
 
-    for (const adapter of this.adapters) {
-      try {
-        const questions = await adapter.fetchQuestions(exam, subject, year);
-        if (questions.length > 0) {
-          console.log(`[QuestionService] Successfully fetched questions from adapter: ${adapter.constructor.name}`);
-          return questions;
+    // Parse JSON mappings from DB
+    const examAliases = (exam.apiAliases as Record<string, string>) || {};
+    const subjectSlugs = (subject.apiSlugs as Record<string, string>) || {};
+
+    for (const [adapterName, adapter] of Object.entries(this.adapters)) {
+        // Check if this Exam AND Subject have a mapping for this specific adapter
+        const examSlug = examAliases[adapterName];
+        const subjectSlug = subjectSlugs[adapterName];
+
+        if (examSlug && subjectSlug) {
+            try {
+                const questions = await adapter.fetchQuestions(examSlug, subjectSlug, year, exam.id, subject.id);
+                if (questions.length > 0) {
+                    return questions;
+                }
+            } catch (e) {
+                console.error(`[QuestionService] Adapter ${adapterName} failed:`, e);
+            }
         }
-      } catch (error) {
-        console.error(`[QuestionService] Adapter ${adapter.constructor.name} failed:`, error);
-      }
     }
 
     return [];
   }
   
-  /**
-   * Helper method to get years from adapters.
-   */
-  private async fetchAvailableYearsFromAdapters(
-    examId: string, 
-    subjectId: string
-  ): Promise<number[]> {
-    
+  // --- Internal Helper: Iterate Adapters to get years ---
+  private async fetchAvailableYearsFromAdapters(examId: string, subjectId: string): Promise<number[]> {
     const exam = await prisma.exam.findUnique({ where: { id: examId } });
     const subject = await prisma.subject.findUnique({ where: { id: subjectId } });
+
     if (!exam || !subject) return [];
 
-    let allAdapterYears: number[] = [];
+    const examAliases = (exam.apiAliases as Record<string, string>) || {};
+    const subjectSlugs = (subject.apiSlugs as Record<string, string>) || {};
+    
+    let allYears: number[] = [];
 
-    for (const adapter of this.adapters) {
-      if (adapter.getAvailableYears) { // Check if method exists
-        try {
-          const years = adapter.getAvailableYears(exam, subject);
-          allAdapterYears.push(...years);
-        } catch (error) {
-          console.error(`[Service] Adapter ${adapter.constructor.name} failed to get years:`, error);
+    for (const [adapterName, adapter] of Object.entries(this.adapters)) {
+        if (adapter.getAvailableYears) {
+            const examSlug = examAliases[adapterName];
+            const subjectSlug = subjectSlugs[adapterName];
+
+            // Only fetch if we have a valid slug for this subject on this adapter
+            if (subjectSlug) {
+                try {
+                    const years = await adapter.getAvailableYears(examSlug, subjectSlug);
+                    if (years.length > 0) {
+                        allYears.push(...years);
+                    }
+                } catch (e) { 
+                    console.error(`[QuestionService] Failed to get years from ${adapterName}`, e); 
+                }
+            }
         }
-      }
     }
-    return allAdapterYears;
+    return allYears;
   }
 
-  /**
-   * Saves standardized questions to our database in a single transaction.
-   * PUBLIC: Can be called by the Bulk Upload API directly.
-   */
-  public async bulkCreate(
-    questions: StandardizedQuestion[]
-  ): Promise<QuestionWithOptions[]> {
-    
-    // 1. Handle Sections (Find or Create)
-    // Filter out null sections and get unique names
-    const uniqueSectionNames = Array.from(new Set(
-      questions
-        .map(q => q.sectionName)
-        .filter((name): name is string => !!name)
-    ));
+  public async bulkCreate(questions: StandardizedQuestion[]): Promise<QuestionWithOptions[]> {
+    if (questions.length === 0) return [];
 
-    // Map to store "Section Name" -> "Section ID"
+    const uniqueSectionNames = Array.from(new Set(questions.map(q => q.sectionName).filter((n): n is string => !!n)));
     const sectionMap = new Map<string, string>();
 
     for (const name of uniqueSectionNames) {
-      // Check if section exists by instruction text
-      let section = await prisma.section.findFirst({
-        where: { instruction: name }
-      });
-
+      let section = await prisma.section.findFirst({ where: { instruction: name } });
       if (!section) {
-        section = await prisma.section.create({
-          data: { instruction: name }
-        });
+        section = await prisma.section.create({ data: { instruction: name } });
       }
       sectionMap.set(name, section.id);
     }
 
-    // Gather all unique tags from the entire batch
-    const allTags = questions.flatMap(q => q.tags || []);
-    const uniqueTags = Array.from(new Set(allTags));
+    const createdQuestions: QuestionWithOptions[] = [];
 
-    // Upsert all tags (ensure they exist)
-    // We do this in a transaction/loop to be safe
-    for (const tagName of uniqueTags) {
-      await prisma.tag.upsert({
-        where: { name: tagName },
-        update: {},
-        create: { name: tagName },
-      });
-    }
+    await prisma.$transaction(async (tx) => {
+        for (const q of questions) {
+            const sectionId = q.sectionName ? sectionMap.get(q.sectionName) : undefined;
 
-    // Fetch all tag IDs so we can link them
-    const dbTags = await prisma.tag.findMany({
-      where: { name: { in: uniqueTags } },
-      select: { id: true, name: true }
-    });
-    const tagMap = new Map(dbTags.map(t => [t.name, t.id]));
+            // Duplicate Check
+            const exists = await tx.question.findFirst({
+                where: {
+                    text: q.text,
+                    subjectId: q.dbSubjectId,
+                    examId: q.dbExamId,
+                    year: q.year
+                }
+            });
 
-    // 2. Create Questions
-    const createPromises = questions.map((q) => {
-      const sectionId = q.sectionName ? sectionMap.get(q.sectionName) : undefined;
-
-      const tagIds = (q.tags || [])
-        .map(name => tagMap.get(name))
-        .filter(id => !!id) as string[];
-
-      return prisma.question.create({
-        data: {
-          text: q.text,
-          explanation: q.explanation,
-          year: q.year,
-          type: q.type, // Save OBJECTIVE or THEORY
-          examId: q.dbExamId,
-          subjectId: q.dbSubjectId,
-          sectionId: sectionId, // Link to Section
-          organizationId: null, // IMPORTANT: All these are general questions
-          options: {
-            createMany: {
-              data: q.options.map(opt => ({
-                text: opt.text,
-                isCorrect: opt.isCorrect,
-              })),
-            },
-          },
-          tags: {
-            connect: tagIds.map(id => ({ id })),
-          }
-        },
-        include: {
-          options: true,
-          section: true, // Return the section too
-        },
-      });
+            if (!exists) {
+                const newQ = await tx.question.create({
+                    data: {
+                        text: q.text,
+                        explanation: q.explanation,
+                        year: q.year,
+                        type: q.type,
+                        imageUrl: q.imageUrl,
+                        examId: q.dbExamId,
+                        subjectId: q.dbSubjectId,
+                        sectionId: sectionId,
+                        organizationId: null, 
+                        options: {
+                            createMany: {
+                                data: q.options.map(opt => ({ text: opt.text, isCorrect: opt.isCorrect })),
+                            },
+                        },
+                    },
+                    include: { options: true, section: true },
+                });
+                createdQuestions.push(newQ);
+            }
+        }
     });
 
-    const createdQuestions = await prisma.$transaction(createPromises);
     return createdQuestions;
   }
 }
