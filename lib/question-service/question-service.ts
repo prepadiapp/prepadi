@@ -147,7 +147,11 @@ class QuestionService {
   public async bulkCreate(questions: StandardizedQuestion[]): Promise<QuestionWithOptions[]> {
     if (questions.length === 0) return [];
 
-    const uniqueSectionNames = Array.from(new Set(questions.map(q => q.sectionName).filter((n): n is string => !!n)));
+    // 1. Handle sections OUTSIDE transaction (fast, cached)
+    const uniqueSectionNames = Array.from(
+      new Set(questions.map(q => q.sectionName).filter((n): n is string => !!n))
+    );
+    
     const sectionMap = new Map<string, string>();
 
     for (const name of uniqueSectionNames) {
@@ -158,46 +162,94 @@ class QuestionService {
       sectionMap.set(name, section.id);
     }
 
+    // 2. Batch duplicate check OUTSIDE transaction (single query)
+    const existingQuestions = await prisma.question.findMany({
+      where: {
+        OR: questions.map(q => ({
+          text: q.text,
+          subjectId: q.dbSubjectId,
+          examId: q.dbExamId,
+          year: q.year,
+        })),
+      },
+      select: {
+        text: true,
+        subjectId: true,
+        examId: true,
+        year: true,
+      },
+    });
+
+    // Create a Set for fast duplicate checking
+    const existingSet = new Set(
+      existingQuestions.map(q => `${q.text}|${q.subjectId}|${q.examId}|${q.year}`)
+    );
+
+    // 3. Filter out duplicates
+    const newQuestions = questions.filter(q => {
+      const key = `${q.text}|${q.dbSubjectId}|${q.dbExamId}|${q.year}`;
+      return !existingSet.has(key);
+    });
+
+    if (newQuestions.length === 0) {
+      console.log('[QuestionService] All questions already exist, skipping insert');
+      return [];
+    }
+
+    console.log(`[QuestionService] Saving ${newQuestions.length} new questions...`);
+
+    // 4. Process in chunks to avoid transaction timeout
+    const CHUNK_SIZE = 20; // Adjust based on your needs
     const createdQuestions: QuestionWithOptions[] = [];
 
-    await prisma.$transaction(async (tx) => {
-        for (const q of questions) {
+    for (let i = 0; i < newQuestions.length; i += CHUNK_SIZE) {
+      const chunk = newQuestions.slice(i, i + CHUNK_SIZE);
+      
+      // Use shorter transaction timeout for each chunk
+      const chunkResults = await prisma.$transaction(
+        async (tx) => {
+          const results: QuestionWithOptions[] = [];
+
+          for (const q of chunk) {
             const sectionId = q.sectionName ? sectionMap.get(q.sectionName) : undefined;
 
-            // Duplicate Check
-            const exists = await tx.question.findFirst({
-                where: {
-                    text: q.text,
-                    subjectId: q.dbSubjectId,
-                    examId: q.dbExamId,
-                    year: q.year
-                }
+            const newQ = await tx.question.create({
+              data: {
+                text: q.text,
+                explanation: q.explanation,
+                year: q.year,
+                type: q.type,
+                imageUrl: q.imageUrl,
+                examId: q.dbExamId,
+                subjectId: q.dbSubjectId,
+                sectionId: sectionId,
+                organizationId: null,
+                options: {
+                  createMany: {
+                    data: q.options.map(opt => ({ 
+                      text: opt.text, 
+                      isCorrect: opt.isCorrect 
+                    })),
+                  },
+                },
+              },
+              include: { options: true, section: true },
             });
+            
+            results.push(newQ);
+          }
 
-            if (!exists) {
-                const newQ = await tx.question.create({
-                    data: {
-                        text: q.text,
-                        explanation: q.explanation,
-                        year: q.year,
-                        type: q.type,
-                        imageUrl: q.imageUrl,
-                        examId: q.dbExamId,
-                        subjectId: q.dbSubjectId,
-                        sectionId: sectionId,
-                        organizationId: null, 
-                        options: {
-                            createMany: {
-                                data: q.options.map(opt => ({ text: opt.text, isCorrect: opt.isCorrect })),
-                            },
-                        },
-                    },
-                    include: { options: true, section: true },
-                });
-                createdQuestions.push(newQ);
-            }
+          return results;
+        },
+        {
+          maxWait: 10000, // 10s to acquire transaction
+          timeout: 15000, // 15s for transaction to complete
         }
-    });
+      );
+
+      createdQuestions.push(...chunkResults);
+      console.log(`[QuestionService] Saved ${i + chunk.length}/${newQuestions.length} questions`);
+    }
 
     return createdQuestions;
   }
