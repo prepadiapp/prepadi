@@ -17,18 +17,18 @@ export type StandardizedQuestion = {
     text: string;
     isCorrect: boolean;
   }[];
+  imageUrl?: string | null;
 };
 
 export interface IQuestionAdapter {
   fetchQuestions(
-    // Pass simple strings now, not full objects, as the Service does the mapping lookup
     examSlug: string, 
     subjectSlug: string,
     year: number,
-    // Pass original DB IDs for reference if needed in return object
     dbExamId: string,
     dbSubjectId: string
   ): Promise<StandardizedQuestion[]>;
 
-  getAvailableYears?: (examSlug: string, subjectSlug: string) => number[];
+
+  getAvailableYears?: (examSlug: string, subjectSlug: string) => Promise<number[]>;
 }
