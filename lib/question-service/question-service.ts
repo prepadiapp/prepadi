@@ -147,7 +147,9 @@ class QuestionService {
   public async bulkCreate(questions: StandardizedQuestion[]): Promise<QuestionWithOptions[]> {
     if (questions.length === 0) return [];
 
-    // 1. Handle sections OUTSIDE transaction (fast, cached)
+    console.log(`[QuestionService] Saving ${questions.length} questions...`);
+
+    // 1. Handle sections
     const uniqueSectionNames = Array.from(
       new Set(questions.map(q => q.sectionName).filter((n): n is string => !!n))
     );
@@ -162,94 +164,92 @@ class QuestionService {
       sectionMap.set(name, section.id);
     }
 
-    // 2. Batch duplicate check OUTSIDE transaction (single query)
-    const existingQuestions = await prisma.question.findMany({
-      where: {
-        OR: questions.map(q => ({
-          text: q.text,
-          subjectId: q.dbSubjectId,
-          examId: q.dbExamId,
-          year: q.year,
-        })),
-      },
-      select: {
-        text: true,
-        subjectId: true,
-        examId: true,
-        year: true,
-      },
-    });
-
-    // Create a Set for fast duplicate checking
-    const existingSet = new Set(
-      existingQuestions.map(q => `${q.text}|${q.subjectId}|${q.examId}|${q.year}`)
-    );
-
-    // 3. Filter out duplicates
-    const newQuestions = questions.filter(q => {
-      const key = `${q.text}|${q.dbSubjectId}|${q.dbExamId}|${q.year}`;
-      return !existingSet.has(key);
-    });
-
-    if (newQuestions.length === 0) {
-      console.log('[QuestionService] All questions already exist, skipping insert');
-      return [];
-    }
-
-    console.log(`[QuestionService] Saving ${newQuestions.length} new questions...`);
-
-    // 4. Process in chunks to avoid transaction timeout
-    const CHUNK_SIZE = 20; // Adjust based on your needs
+    // 2. Save with concurrency limit (5 at a time)
+    const CONCURRENCY = 5;
+    const MAX_RETRIES = 3;
     const createdQuestions: QuestionWithOptions[] = [];
+    const permanentlyFailed: StandardizedQuestion[] = [];
 
-    for (let i = 0; i < newQuestions.length; i += CHUNK_SIZE) {
-      const chunk = newQuestions.slice(i, i + CHUNK_SIZE);
-      
-      // Use shorter transaction timeout for each chunk
-      const chunkResults = await prisma.$transaction(
-        async (tx) => {
-          const results: QuestionWithOptions[] = [];
+    const saveQuestion = async (q: StandardizedQuestion, index: number): Promise<void> => {
+      let saved = false;
+      let attempt = 0;
 
-          for (const q of chunk) {
-            const sectionId = q.sectionName ? sectionMap.get(q.sectionName) : undefined;
+      while (!saved && attempt < MAX_RETRIES) {
+        attempt++;
 
-            const newQ = await tx.question.create({
-              data: {
-                text: q.text,
-                explanation: q.explanation,
-                year: q.year,
-                type: q.type,
-                imageUrl: q.imageUrl,
-                examId: q.dbExamId,
-                subjectId: q.dbSubjectId,
-                sectionId: sectionId,
-                organizationId: null,
-                options: {
-                  createMany: {
-                    data: q.options.map(opt => ({ 
-                      text: opt.text, 
-                      isCorrect: opt.isCorrect 
-                    })),
-                  },
-                },
-              },
-              include: { options: true, section: true },
-            });
-            
-            results.push(newQ);
+        try {
+          // Check duplicate
+          const exists = await prisma.question.findFirst({
+            where: {
+              text: q.text,
+              subjectId: q.dbSubjectId,
+              examId: q.dbExamId,
+              year: q.year,
+            },
+          });
+
+          if (exists) {
+            saved = true;
+            return;
           }
 
-          return results;
-        },
-        {
-          maxWait: 10000, // 10s to acquire transaction
-          timeout: 15000, // 15s for transaction to complete
-        }
-      );
+          // Create question
+          const sectionId = q.sectionName ? sectionMap.get(q.sectionName) : undefined;
 
-      createdQuestions.push(...chunkResults);
-      console.log(`[QuestionService] Saved ${i + chunk.length}/${newQuestions.length} questions`);
+          const newQ = await prisma.question.create({
+            data: {
+              text: q.text,
+              explanation: q.explanation,
+              year: q.year,
+              type: q.type,
+              imageUrl: q.imageUrl,
+              examId: q.dbExamId,
+              subjectId: q.dbSubjectId,
+              sectionId: sectionId,
+              organizationId: null,
+              options: {
+                createMany: {
+                  data: q.options.map(opt => ({
+                    text: opt.text,
+                    isCorrect: opt.isCorrect,
+                  })),
+                },
+              },
+            },
+            include: { options: true, section: true },
+          });
+
+          createdQuestions.push(newQ);
+          console.log(`[QuestionService] ✓ ${index + 1}/${questions.length} saved`);
+          saved = true;
+
+        } catch (error) {
+          if (attempt < MAX_RETRIES) {
+            console.warn(`[QuestionService] ⚠️  ${index + 1}/${questions.length} failed (attempt ${attempt}), retrying...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } else {
+            console.error(`[QuestionService] ✗ ${index + 1}/${questions.length} FAILED permanently`);
+            permanentlyFailed.push(q);
+          }
+        }
+      }
+    };
+
+    // Process in batches of CONCURRENCY
+    for (let i = 0; i < questions.length; i += CONCURRENCY) {
+      const batch = questions.slice(i, i + CONCURRENCY);
+      await Promise.all(batch.map((q, idx) => saveQuestion(q, i + idx)));
     }
+
+    // 3. Recursive retry for failed
+    if (permanentlyFailed.length > 0) {
+      console.log(`[QuestionService] Retrying ${permanentlyFailed.length} failed questions...`);
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      const finalAttempt = await this.bulkCreate(permanentlyFailed);
+      createdQuestions.push(...finalAttempt);
+    }
+
+    console.log(`[QuestionService] Final: ${createdQuestions.length}/${questions.length} saved`);
 
     return createdQuestions;
   }
