@@ -35,8 +35,8 @@ model User {
   
   // --- SaaS Relations ---
   organizationId  String?
-  organization    Organization? @relation("OrgMembers", fields: [organizationId], references: [id], onDelete: SetNull) // If org deleted, user stays but leaves org
-  ownedOrganization Organization? @relation("OrgOwner") // One-to-one relation, handled on Org side
+  organization    Organization? @relation("OrgMembers", fields: [organizationId], references: [id], onDelete: SetNull) 
+  ownedOrganization Organization? @relation("OrgOwner")
   
   // A user (Student) can have a subscription directly
   subscription    Subscription? 
@@ -77,22 +77,24 @@ model Organization {
   id        String   @id @default(cuid())
   name      String
   ownerId   String   @unique
-  owner     User     @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: Cascade) // Delete Org if Owner is deleted
+  owner     User     @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members   User[]   @relation("OrgMembers")
   
   // --- SaaS Relations ---
-  // Organization has the subscription, not the individual members
   subscription Subscription? 
   
   // Invites sent by this org
   invites      OrgInvite[]
 
   questions Question[]
+  
+  // --- NEW: Relation to Subject ---
+  subjects  Subject[] 
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// To handle invites
 model OrgInvite {
   id             String       @id @default(cuid())
   email          String
@@ -104,23 +106,18 @@ model OrgInvite {
   createdAt      DateTime     @default(now())
 }
 
-// --- 2. BILLING & PLANS (NEW) ---
+// --- 2. BILLING & PLANS ---
 
 model Plan {
   id            String   @id @default(cuid())
-  name          String   // e.g. "Free", "Pro", "Org Basic"
+  name          String   
   description   String?
-  price         Int      // In lowest currency unit (e.g. Kobo for Naira). 0 for Free.
+  price         Int      
   currency      String   @default("NGN")
-  interval      PlanInterval // MONTHLY, YEARLY, etc.
-  type          PlanType // STUDENT or ORGANIZATION
-  
-  // The Limits/Features Config
-  // e.g. { "maxStudents": 50, "allowedExams": ["WAEC", "JAMB"], "canCreateExams": true }
+  interval      PlanInterval 
+  type          PlanType 
   features      Json 
-  
   isActive      Boolean  @default(true)
-  
   subscriptions Subscription[]
   orders        Order[]
   createdAt     DateTime @default(now())
@@ -129,44 +126,31 @@ model Plan {
 
 model Subscription {
   id             String   @id @default(cuid())
-  
-  // Links
-  userId         String?  @unique // For individual students
-  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade) // Delete sub if user deleted
-  
-  organizationId String?  @unique // For organizations
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade) // Delete sub if org deleted
-  
+  userId         String?  @unique 
+  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String?  @unique 
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   planId         String
-  plan           Plan     @relation(fields: [planId], references: [id]) // Prevent deleting plan if subs exist? Or cascade? Usually keep plan history.
-  
+  plan           Plan     @relation(fields: [planId], references: [id])
   startDate      DateTime @default(now())
-  endDate        DateTime? // Null means forever (e.g. free plan) or auto-renew logic
-  
+  endDate        DateTime? 
   isActive       Boolean  @default(true)
-  
-  // Provider details (Paystack)
-  providerSubId  String?  // Paystack subscription code
-  
+  providerSubId  String?  
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
 
 model Order {
   id             String      @id @default(cuid())
-  userId         String      // Who initiated the payment
-  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade) // Delete order history if user is deleted
-  
+  userId         String      
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   planId         String
-  plan           Plan        @relation(fields: [planId], references: [id]) // Keep orders even if plan deleted? Usually safer to restrict plan deletion.
-  
+  plan           Plan        @relation(fields: [planId], references: [id])
   amount         Int
   currency       String
   status         OrderStatus @default(PENDING)
-  reference      String      @unique // Paystack reference
-  
+  reference      String      @unique 
   transaction    Transaction?
-  
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 }
@@ -174,14 +158,12 @@ model Order {
 model Transaction {
   id             String   @id @default(cuid())
   orderId        String   @unique
-  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade) // Delete transaction if order deleted
-  
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   amount         Int
   currency       String
-  status         String   // "success", "failed" (from Payment Gateway)
-  provider       String   // "PAYSTACK"
-  providerRef    String   // Paystack transaction ID
-  
+  status         String   
+  provider       String   
+  providerRef    String   
   paymentDate    DateTime @default(now())
 }
 
@@ -190,20 +172,23 @@ model Transaction {
 model Exam {
   id          String   @id @default(cuid())
   name        String   @unique
-  shortName   String   @unique // Internal slug (e.g. "UTME")
+  shortName   String   @unique 
   description String?
-  
-  // NEW: Map external API names to this internal exam
-  // e.g. { "qboard": "utme", "myquest": "jamb" }
   apiAliases  Json?    
-
   questions   Question[]
   quizAttempts QuizAttempt[]
 }
 
 model Subject {
-  id           String        @id @default(cuid())
-  name         String        @unique
+  id             String        @id @default(cuid())
+  name           String        
+  // Removed @unique to allow multi-tenancy names
+
+  // New Fields
+  apiSlugs       Json?         
+  organizationId String?       
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   questions    Question[]
   quizAttempts QuizAttempt[]
 }
@@ -212,13 +197,10 @@ model Question {
   id          String    @id @default(cuid())
   text        String    @db.Text
   explanation String?   @db.Text
-  sourceApi   String?   // e.g., "qboard", "manual"
+  sourceApi   String?   
   year        Int
-  
-  // NEW: Image support
   imageUrl    String? 
   
-  // Relations
   subjectId   String
   subject     Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   examId      String
@@ -228,7 +210,7 @@ model Question {
   section     Section?  @relation(fields: [sectionId], references: [id], onDelete: SetNull)
 
   organizationId String? 
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade) // If org deleted, delete their custom questions
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   options     Option[]
   userAnswers UserAnswer[]
@@ -268,12 +250,10 @@ model QuizAttempt {
   timeTaken   Int
   createdAt   DateTime @default(now())
   year        Int
-  
-  // NEW: Mode
-  mode        QuizMode @default(EXAM) // Exam (Timed) vs Practice (Untimed)
+  mode        QuizMode @default(EXAM)
 
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade) // Delete history if user deleted
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   subjectId   String
   subject     Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   examId      String
@@ -310,7 +290,7 @@ enum PlanInterval {
   QUARTERLY
   BIANNUALLY
   YEARLY
-  LIFETIME // For free plans
+  LIFETIME
 }
 
 enum PlanType {
@@ -331,6 +311,6 @@ enum InviteStatus {
 }
 
 enum QuizMode {
-  EXAM      // Timed, simulates real conditions
-  PRACTICE  // Untimed, instant feedback
+  EXAM
+  PRACTICE
 }
