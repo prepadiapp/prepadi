@@ -12,6 +12,8 @@ interface SignupBody {
   role: UserRole;
   planId: string;
   orgName?: string;
+  inviteToken?: string;
+  skipPlan?: boolean;
 }
 
 function calculateEndDate(interval: PlanInterval): Date | null {
@@ -29,14 +31,25 @@ function calculateEndDate(interval: PlanInterval): Date | null {
 export async function POST(request: Request) {
   try {
     const body: SignupBody = await request.json();
-    const { name, email, password, role, planId, orgName } = body;
+    const { name, email, password, role, planId, orgName, inviteToken, skipPlan } = body;
 
-    if (!name || !email || !password || !planId) {
-      return new NextResponse('Missing required fields', { status: 400 });
+    // Validation Logic
+    if (inviteToken || skipPlan) {
+        // Invite/Join Flow: Plan ID not required
+        if (!name || !email || !password) return new NextResponse('Missing fields', { status: 400 });
+    } else {
+        // Standard Flow: Plan ID required
+        if (!name || !email || !password || !planId) {
+            return new NextResponse('Missing required fields', { status: 400 });
+        }
     }
 
-    const plan = await prisma.plan.findUnique({ where: { id: planId } });
-    if (!plan) return new NextResponse('Invalid Plan selected', { status: 400 });
+    // Check Plan validity only if standard flow
+    let plan = null;
+    if (!inviteToken && !skipPlan && planId) {
+        plan = await prisma.plan.findUnique({ where: { id: planId } });
+        if (!plan) return new NextResponse('Invalid Plan selected', { status: 400 });
+    }
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) return new NextResponse('User already exists', { status: 409 });
@@ -44,14 +57,36 @@ export async function POST(request: Request) {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     await prisma.$transaction(async (tx) => {
-      // A. Create User
+      
+      // 1. Invite Handling (Determine Org linkage)
+      let organizationId = null;
+      let isVerified = false;
+
+      if (inviteToken) {
+        const invite = await tx.orgInvite.findUnique({ where: { token: inviteToken } });
+        if (!invite || invite.status !== 'PENDING') throw new Error("Invalid or expired invite");
+        
+        organizationId = invite.organizationId;
+        isVerified = true; // Trust the token ownership
+        
+        // Delete invite to prevent reuse
+        await tx.orgInvite.delete({ where: { id: invite.id } });
+      }
+
+      // 2. Create User
       const user = await tx.user.create({
-        data: { name, email, hashedPassword, role },
+        data: {
+            name,
+            email,
+            hashedPassword,
+            role: (inviteToken || skipPlan) ? UserRole.STUDENT : role, 
+            organizationId, 
+            emailVerified: isVerified ? new Date() : null
+        },
       });
 
-      // B. Handle Org
-      let organizationId: string | null = null;
-      if (role === UserRole.ORGANIZATION) {
+      // 3. Handle Organization Creation (If standard Org Signup)
+      if (!inviteToken && !skipPlan && role === UserRole.ORGANIZATION) {
         if (!orgName) throw new Error('Organization Name is required');
         const org = await tx.organization.create({
           data: { name: orgName, ownerId: user.id },
@@ -60,41 +95,45 @@ export async function POST(request: Request) {
           where: { id: user.id },
           data: { ownedOrganization: { connect: { id: org.id } } }
         });
-        organizationId = org.id;
+        organizationId = org.id; 
       }
 
-      // C. Create Subscription
-      const isPaidPlan = plan.price > 0;
-      const endDate = calculateEndDate(plan.interval);
-      
-      const userIdToLink = role === UserRole.STUDENT ? user.id : null;
-      const orgIdToLink = role === UserRole.ORGANIZATION ? organizationId : null;
+      // 4. Create Subscription (Standard Flow Only)
+      if (!inviteToken && !skipPlan && plan) {
+          const isPaidPlan = plan.price > 0;
+          const endDate = calculateEndDate(plan.interval);
+          
+          const userIdToLink = role === UserRole.STUDENT ? user.id : null;
+          const orgIdToLink = role === UserRole.ORGANIZATION ? organizationId : null;
 
-      await tx.subscription.create({
-        data: {
-          planId: plan.id,
-          startDate: new Date(),
-          endDate: endDate,
-          isActive: !isPaidPlan,
-          userId: userIdToLink,
-          organizationId: orgIdToLink,
-        },
-      });
+          await tx.subscription.create({
+            data: {
+              planId: plan.id,
+              startDate: new Date(),
+              endDate: endDate,
+              isActive: !isPaidPlan,
+              userId: userIdToLink,
+              organizationId: orgIdToLink,
+            },
+          });
+      }
 
-      // D. Verification
-      const token = randomUUID();
-      const expires = new Date(new Date().getTime() + 3600 * 1000);
-      await tx.verificationToken.create({
-        data: { identifier: email, token, expires },
-      });
+      // 5. Verification Email
+      if (!isVerified) {
+          const token = randomUUID();
+          const expires = new Date(new Date().getTime() + 3600 * 1000);
+          await tx.verificationToken.create({
+            data: { identifier: email, token, expires },
+          });
 
-      await sendVerificationEmail(email, token);
+          await sendVerificationEmail(email, token);
+      }
     });
 
     return NextResponse.json({ 
       success: true,
-      requiresPayment: plan.price > 0,
-      planId: plan.id,
+      requiresPayment: !inviteToken && !skipPlan && (plan?.price || 0) > 0,
+      planId: plan?.id,
     });
 
   } catch (error: any) {

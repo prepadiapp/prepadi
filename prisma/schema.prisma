@@ -47,6 +47,7 @@ model User {
 
   quizAttempts    QuizAttempt[]
   orders          Order[]
+  joinRequests    JoinRequest[]
 }
 
 model Account {
@@ -85,6 +86,9 @@ model Organization {
   
   // Invites sent by this org
   invites      OrgInvite[]
+  
+  // Incoming join requests
+  joinRequests JoinRequest[]
 
   questions Question[]
   
@@ -104,6 +108,19 @@ model OrgInvite {
   status         InviteStatus @default(PENDING)
   expiresAt      DateTime
   createdAt      DateTime     @default(now())
+}
+
+model JoinRequest {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  status         RequestStatus @default(PENDING)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([userId, organizationId]) // One request per user per org
 }
 
 // --- 2. BILLING & PLANS ---
@@ -313,4 +330,10 @@ enum InviteStatus {
 enum QuizMode {
   EXAM
   PRACTICE
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }

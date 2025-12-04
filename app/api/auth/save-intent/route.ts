@@ -3,12 +3,18 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { planId, role, orgName } = body;
+    const { planId, role, orgName, inviteToken, skipPlan } = body;
 
     const response = NextResponse.json({ success: true });
 
-    // Save intent to a cookie that lasts 1 hour
-    response.cookies.set('prepadi_signup_intent', JSON.stringify({ planId, role, orgName }), {
+    // Save intent to a cookie
+    response.cookies.set('prepadi_signup_intent', JSON.stringify({ 
+      planId, 
+      role, 
+      orgName, 
+      inviteToken,
+      skipPlan // Added
+    }), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       maxAge: 60 * 60, // 1 hour

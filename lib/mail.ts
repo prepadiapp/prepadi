@@ -76,3 +76,46 @@ export const sendVerificationEmail = async (email: string, token: string) => {
     return { error: "An unexpected error occurred." };
   }
 };
+
+/**
+ * Sends an organization invitation email.
+ * @param email - The recipient's email address.
+ * @param token - The unique invite token.
+ * @param orgName - The name of the organization sending the invite.
+ */
+export const sendOrgInviteEmail = async (email: string, token: string, orgName: string) => {
+  const resend = getResendClient();
+  const joinLink = `${appUrl}/join/${token}`;
+
+  try {
+    const { error } = await resend.emails.send({
+      from: 'Prepadi <invites@resend.dev>', // Use verified domain in prod
+      to: [email],
+      subject: `Invitation to join ${orgName} on Prepadi`,
+      html: `
+        <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
+          <h2>Hello!</h2>
+          <p>You have been invited to join <strong>${orgName}</strong> on Prepadi.</p>
+          <p>Accepting this invitation will give you access to their practice exams and question bank.</p>
+          <p>Click the link below to get started:</p>
+          <a href="${joinLink}" style="background-color: #000; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 16px 0;">
+            Accept Invitation
+          </a>
+          <p style="font-size: 0.9em; color: #666;">
+            This link is valid for 7 days.
+          </p>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error("Resend invite error:", error);
+      return { error: "Failed to send invite email." };
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error("Invite email exception:", error);
+    return { error: "Unexpected error sending email." };
+  }
+};

@@ -10,19 +10,23 @@ export async function verifyUserAccess(userId: string, resource: {
     where: { id: userId },
     include: {
       subscription: { include: { plan: true } },
-      ownedOrganization: { include: { subscription: { include: { plan: true } } } }
+      ownedOrganization: { include: { subscription: { include: { plan: true } } } },
+      // Include the organization the user is a MEMBER of
+      organization: { include: { subscription: { include: { plan: true } } } }
     }
   });
 
   if (!user) return { allowed: false, reason: "User not found" };
 
-  // Determine active subscription (Direct > Org)
+  // Determine active subscription (Direct > Owned Org > Member Org)
   let activeSub = null;
   
   if (user.subscription && user.subscription.isActive) {
      activeSub = user.subscription;
   } else if (user.ownedOrganization?.subscription?.isActive) {
      activeSub = user.ownedOrganization.subscription;
+  } else if (user.organization?.subscription?.isActive) {
+     activeSub = user.organization.subscription;
   }
 
   if (!activeSub) {
@@ -79,13 +83,15 @@ export async function getUserPlanFilters(userId: string) {
     where: { id: userId },
     include: {
       subscription: { include: { plan: true } },
-      ownedOrganization: { include: { subscription: { include: { plan: true } } } }
+      ownedOrganization: { include: { subscription: { include: { plan: true } } } },
+      organization: { include: { subscription: { include: { plan: true } } } }
     }
   });
 
   let activeSub = null;
   if (user?.subscription?.isActive) activeSub = user.subscription;
   else if (user?.ownedOrganization?.subscription?.isActive) activeSub = user.ownedOrganization.subscription;
+  else if (user?.organization?.subscription?.isActive) activeSub = user.organization.subscription;
 
   if (!activeSub) return { allowedExamIds: [], allowedSubjectIds: [], allowedYears: [] }; // Block all
 

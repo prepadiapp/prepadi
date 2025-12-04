@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, LineChart, BookOpen, User, Menu, CreditCard, Sparkles } from 'lucide-react';
+import { Home, LineChart, BookOpen, User, Menu, CreditCard, Sparkles, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
 import { SignOutButton } from '@/components/SignOutButton';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 const navItems = [
   { href: '/dashboard', label: 'Home', icon: Home },
@@ -18,9 +19,11 @@ const navItems = [
 
 interface StudentNavProps {
     isPro: boolean;
+    isOrgMember?: boolean;
+    orgName?: string;
 }
 
-export function StudentNav({ isPro }: StudentNavProps) {
+export function StudentNav({ isPro, isOrgMember, orgName }: StudentNavProps) {
   const pathname = usePathname();
 
   // Desktop Sidebar
@@ -28,6 +31,12 @@ export function StudentNav({ isPro }: StudentNavProps) {
     <div className="hidden md:flex w-64 flex-col fixed inset-y-0 border-r bg-white z-20">
       <div className="p-6 border-b">
         <h1 className="text-2xl font-bold text-primary tracking-tight">Prepadi</h1>
+        {isOrgMember && orgName && (
+            <div className="mt-2 flex items-center gap-2 p-2 bg-slate-100 rounded-md text-xs text-slate-700 font-medium border border-slate-200">
+                <Building2 className="w-3 h-3 text-slate-500" />
+                <span className="truncate">{orgName}</span>
+            </div>
+        )}
       </div>
       
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
@@ -50,8 +59,8 @@ export function StudentNav({ isPro }: StudentNavProps) {
       </nav>
 
       <div className="p-4 border-t bg-slate-50/50">
-        {/* --- UPGRADE CARD (Only if Free Plan) --- */}
-        {!isPro && (
+        {/* --- UPGRADE CARD (Hide if Pro OR Org Member) --- */}
+        {!isPro && !isOrgMember && (
             <Card className="bg-gradient-to-br from-blue-600 to-indigo-600 border-none shadow-md mb-4 overflow-hidden relative group">
                 <div className="absolute top-0 right-0 -mt-4 -mr-4 w-16 h-16 bg-white/20 rounded-full blur-xl group-hover:bg-white/30 transition-all" />
                 <CardContent className="p-4 relative z-10">
@@ -69,11 +78,14 @@ export function StudentNav({ isPro }: StudentNavProps) {
             </Card>
         )}
 
-        <Button asChild variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground mb-2">
-            <Link href="/dashboard/billing">
-                <CreditCard className="w-4 h-4 mr-3"/> Billing
-            </Link>
-        </Button>
+        {/* Hide Billing link for Org Members */}
+        {!isOrgMember && (
+            <Button asChild variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground mb-2">
+                <Link href="/dashboard/billing">
+                    <CreditCard className="w-4 h-4 mr-3"/> Billing
+                </Link>
+            </Button>
+        )}
         <SignOutButton />
       </div>
     </div>
@@ -101,10 +113,17 @@ export function StudentNav({ isPro }: StudentNavProps) {
     </div>
   );
 
-  // Mobile Top Header (Unchanged)
+  // Mobile Top Header
   const MobileHeader = () => (
     <div className="md:hidden flex items-center justify-between px-4 py-3 border-b bg-white sticky top-0 z-40">
-      <h1 className="text-lg font-bold text-primary tracking-tight">Prepadi</h1>
+      <div className="flex items-center gap-2">
+          <h1 className="text-lg font-bold text-primary tracking-tight">Prepadi</h1>
+          {isOrgMember && (
+              <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-normal bg-slate-50 border-slate-200">
+                  Org
+              </Badge>
+          )}
+      </div>
       <Sheet>
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" className="-mr-2">
@@ -118,7 +137,7 @@ export function StudentNav({ isPro }: StudentNavProps) {
            </SheetHeader>
            <div className="flex flex-col h-full mt-6">
              <nav className="space-y-2">
-                {!isPro && (
+                {!isPro && !isOrgMember && (
                    <Button asChild className="w-full justify-start bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 border-none">
                         <Link href="/dashboard/billing">
                             <Sparkles className="w-4 h-4 mr-2 text-yellow-300 fill-yellow-300" />
@@ -126,12 +145,19 @@ export function StudentNav({ isPro }: StudentNavProps) {
                         </Link>
                    </Button>
                 )}
-                <Button asChild variant="outline" className="w-full justify-start">
-                    <Link href="/dashboard/billing">
-                        <CreditCard className="w-4 h-4 mr-2" />
-                        Manage Subscription
-                    </Link>
-                </Button>
+                {!isOrgMember && (
+                    <Button asChild variant="outline" className="w-full justify-start">
+                        <Link href="/dashboard/billing">
+                            <CreditCard className="w-4 h-4 mr-2" />
+                            Manage Subscription
+                        </Link>
+                    </Button>
+                )}
+                {isOrgMember && orgName && (
+                    <div className="p-3 bg-muted rounded-lg text-sm text-center text-muted-foreground border border-dashed">
+                        Connected to <br/><span className="font-semibold text-foreground">{orgName}</span>
+                    </div>
+                )}
              </nav>
              <div className="mt-auto pt-8 border-t mb-8">
                <SignOutButton />

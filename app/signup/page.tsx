@@ -1,42 +1,63 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Plan, UserRole, PlanType } from '@prisma/client'; 
+import { Plan, UserRole } from '@prisma/client'; 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Check, Building, GraduationCap, ArrowRight, ArrowLeft } from "lucide-react";
+import { Loader2, Check, Building, GraduationCap, ArrowLeft } from "lucide-react";
 import { GoogleIcon } from '@/components/GoogleIcon';
 import { signIn } from 'next-auth/react';
 
 export default function SignupPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Direct Invite Params
+  const inviteToken = searchParams.get('inviteToken');
+  const inviteEmail = searchParams.get('email');
+  
+  // General Join Flow Params
+  const flow = searchParams.get('flow'); // 'general_join'
+  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
   
   // --- State ---
-  const [step, setStep] = useState<1 | 2 | 3>(1); // 1=Role, 2=Plan, 3=Form
+  const [step, setStep] = useState<1 | 2 | 3>(1); 
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.STUDENT);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   
-  // Form State
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [orgName, setOrgName] = useState(''); 
   
-  // UI State
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showOrgDialog, setShowOrgDialog] = useState(false); // Controls the Org Name popup
+  const [showOrgDialog, setShowOrgDialog] = useState(false); 
 
-  // --- Step 1: Fetch Plans when Role changes ---
+  // --- Logic: Handle Invites/Flows ---
   useEffect(() => {
-    if (step === 2) {
+    if (inviteToken) {
+        // Direct Invite: Strict Student, Pre-fill email
+        setStep(3); 
+        setSelectedRole(UserRole.STUDENT); 
+        if (inviteEmail) setEmail(inviteEmail); 
+    } else if (flow === 'general_join') {
+        // General Join: Strict Student, Skip Plan
+        setStep(3);
+        setSelectedRole(UserRole.STUDENT);
+    }
+  }, [inviteToken, inviteEmail, flow]);
+
+  // --- Logic: Fetch Plans (Only if needed) ---
+  useEffect(() => {
+    if (step === 2 && !inviteToken && flow !== 'general_join') {
       const type = selectedRole === UserRole.STUDENT ? 'STUDENT' : 'ORGANIZATION';
       setLoading(true);
       fetch(`/api/public/plans?type=${type}`)
@@ -45,7 +66,7 @@ export default function SignupPage() {
         .catch(err => setError("Failed to load plans"))
         .finally(() => setLoading(false));
     }
-  }, [step, selectedRole]);
+  }, [step, selectedRole, inviteToken, flow]);
 
   // --- Handlers ---
 
@@ -59,11 +80,13 @@ export default function SignupPage() {
     setStep(3);
   };
 
-  // Standard Email/Password Signup
+  // Handler: Credentials Signup
   const handleFinalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+
+    const skipPlan = flow === 'general_join';
 
     try {
       const res = await fetch('/api/signup', {
@@ -74,14 +97,34 @@ export default function SignupPage() {
           email,
           password,
           role: selectedRole,
-          planId: selectedPlan?.id,
+          planId: selectedPlan?.id, 
           orgName: selectedRole === UserRole.ORGANIZATION ? orgName : undefined,
+          inviteToken,
+          skipPlan, // New flag for general join flow
         }),
       });
 
       if (!res.ok) {
         const msg = await res.text();
         throw new Error(msg);
+      }
+
+      const data = await res.json();
+
+      // Direct Invite: Auto-verified
+      if (inviteToken && data.success) {
+          router.push('/login?verified=true');
+          return;
+      }
+
+      // General Join: Standard verification needed
+      if (flow === 'general_join' && data.success) {
+          // We use a special query param to tell verify page "After verify, go to callbackUrl"
+          // But verify page logic is simple. Let's just go to verify page.
+          // Ideally, the verification email link should handle the redirection, but that's complex.
+          // For now, standard flow.
+          router.push('/verify-email');
+          return;
       }
 
       router.push('/verify-email');
@@ -92,18 +135,21 @@ export default function SignupPage() {
     }
   };
 
-  // Triggered when "Sign Up with Google" is clicked
+  // Handler: Google Signup Trigger
   const initiateGoogleSignup = () => {
     if (selectedRole === UserRole.ORGANIZATION && !orgName.trim()) {
-      setShowOrgDialog(true); // Open the popup if org name is missing
+      setShowOrgDialog(true);
     } else {
-      performGoogleRedirect(); // Proceed if Student or Org Name is already filled
+      performGoogleRedirect(); 
     }
   };
 
-  // The actual redirect logic
+  // Handler: Google Redirect Logic
   const performGoogleRedirect = async () => {
-    if (!selectedPlan) return;
+    const skipPlan = flow === 'general_join';
+    
+    // Validation: Must have Plan OR Invite OR be skipping plan
+    if (!selectedPlan && !inviteToken && !skipPlan) return;
     
     setLoading(true);
     try {
@@ -111,13 +157,15 @@ export default function SignupPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          planId: selectedPlan.id,
+          planId: selectedPlan?.id,
           role: selectedRole,
-          orgName: selectedRole === 'ORGANIZATION' ? orgName : undefined
+          orgName: selectedRole === 'ORGANIZATION' ? orgName : undefined,
+          inviteToken,
+          skipPlan // Pass flag to intent
         }),
       });
 
-      signIn('google', { callbackUrl: '/dashboard' });
+      signIn('google', { callbackUrl: callbackUrl });
     } catch (error) {
       console.error(error);
       setLoading(false);
@@ -126,7 +174,7 @@ export default function SignupPage() {
 
   // --- Renders ---
 
-  // Step 1: Choose Role
+  // STEP 1: Role Selection
   if (step === 1) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted/20 p-4">
@@ -146,9 +194,7 @@ export default function SignupPage() {
                   <GraduationCap className="w-10 h-10 text-blue-600" />
                 </div>
                 <h3 className="text-2xl font-bold">Student</h3>
-                <p className="text-sm text-muted-foreground">
-                  I want to practice for my exams, take quizzes, and track my performance.
-                </p>
+                <p className="text-sm text-muted-foreground">I want to practice for my exams.</p>
               </CardContent>
             </Card>
 
@@ -161,14 +207,11 @@ export default function SignupPage() {
                   <Building className="w-10 h-10 text-purple-600" />
                 </div>
                 <h3 className="text-2xl font-bold">Organization</h3>
-                <p className="text-sm text-muted-foreground">
-                  I want to manage students, create custom exams, and monitor progress.
-                </p>
+                <p className="text-sm text-muted-foreground">I want to manage students.</p>
               </CardContent>
             </Card>
           </div>
-          
-          <div className="pt-4">
+           <div className="pt-4">
              <p className="text-sm text-muted-foreground">
                 Already have an account? <Link href="/login" className="text-primary font-medium hover:underline">Log in</Link>
              </p>
@@ -178,7 +221,7 @@ export default function SignupPage() {
     );
   }
 
-  // Step 2: Choose Plan
+  // STEP 2: Plan Selection
   if (step === 2) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-muted/20 p-4">
@@ -226,75 +269,52 @@ export default function SignupPage() {
     );
   }
 
-  // Step 3: Registration Form
+  // STEP 3: Signup Form
+  const isJoinFlow = !!inviteToken || flow === 'general_join';
+  const cardTitle = inviteToken ? 'Join Organization' : (flow === 'general_join' ? 'Create Student Account' : 'Complete Registration');
+
   return (
     <>
       <div className="min-h-screen flex items-center justify-center bg-muted/20 p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
             <div className="flex items-center gap-2 mb-2">
-              <Button variant="ghost" size="icon" onClick={() => setStep(2)} className="h-8 w-8">
-                <ArrowLeft className="w-4 h-4" />
-              </Button>
-              <span className="text-sm text-muted-foreground">Back to Plans</span>
+              {!isJoinFlow && (
+                  <Button variant="ghost" size="icon" onClick={() => setStep(2)} className="h-8 w-8">
+                    <ArrowLeft className="w-4 h-4" />
+                  </Button>
+              )}
+              {isJoinFlow && <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-bold">Student Signup</span>}
+              {!isJoinFlow && <span className="text-sm text-muted-foreground">Back to Plans</span>}
             </div>
-            <CardTitle className="text-2xl">Complete Registration</CardTitle>
+            <CardTitle className="text-2xl">{cardTitle}</CardTitle>
             <CardDescription>
-              Creating a <strong>{selectedPlan?.name}</strong> account for <strong>{selectedRole}</strong>.
+              {inviteToken ? 'Create your student account to accept the invite.' : 
+               flow === 'general_join' ? 'Create an account to request access to the organization.' :
+               `Creating a ${selectedPlan?.name} account for ${selectedRole}.`}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {error && (
-              <Alert variant="destructive" className="mb-4">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+            {error && <Alert variant="destructive" className="mb-4"><AlertDescription>{error}</AlertDescription></Alert>}
 
-            {/* Email/Password Form */}
             <form onSubmit={handleFinalSubmit} className="space-y-4">
               {selectedRole === UserRole.ORGANIZATION && (
                 <div className="space-y-2">
                   <Label htmlFor="orgName">Organization Name</Label>
-                  <Input 
-                    id="orgName" 
-                    value={orgName} 
-                    onChange={e => setOrgName(e.target.value)} 
-                    placeholder="e.g. Great Heights Academy"
-                    required 
-                  />
+                  <Input id="orgName" value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="e.g. Great Heights Academy" required />
                 </div>
               )}
-              
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
-                <Input 
-                  id="name" 
-                  value={name} 
-                  onChange={e => setName(e.target.value)} 
-                  required 
-                />
+                <Input id="name" value={name} onChange={e => setName(e.target.value)} required />
               </div>
-              
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input 
-                  id="email" 
-                  type="email" 
-                  value={email} 
-                  onChange={e => setEmail(e.target.value)} 
-                  required 
-                />
+                <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required disabled={!!inviteEmail} />
               </div>
-              
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input 
-                  id="password" 
-                  type="password" 
-                  value={password} 
-                  onChange={e => setPassword(e.target.value)} 
-                  required 
-                />
+                <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
               </div>
 
               <Button type="submit" className="w-full" disabled={loading}>
@@ -307,57 +327,33 @@ export default function SignupPage() {
               <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or continue with</span></div>
             </div>
 
-            <Button 
-              variant="outline" 
-              className="w-full" 
-              onClick={initiateGoogleSignup}
-              disabled={loading || !selectedPlan}
-            >
+            <Button variant="outline" className="w-full" onClick={initiateGoogleSignup} disabled={loading || (!selectedPlan && !isJoinFlow)}>
               <GoogleIcon className="mr-2" />
               Sign Up with Google
             </Button>
-
           </CardContent>
           <CardFooter className="justify-center">
             <p className="text-sm text-muted-foreground">
-              Already have an account? <Link href="/login" className="text-primary font-medium hover:underline">Log In</Link>
+              Already have an account? <Link href={`/login?callbackUrl=${callbackUrl}`} className="text-primary font-medium hover:underline">Log In</Link>
             </p>
           </CardFooter>
         </Card>
       </div>
 
-      {/* --- Organization Name Dialog --- */}
+      {/* Dialog for Organization Name */}
       <Dialog open={showOrgDialog} onOpenChange={setShowOrgDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Organization Setup</DialogTitle>
-            <DialogDescription>
-              Please enter your Organization's name to continue with Google Sign Up.
-            </DialogDescription>
+            <DialogDescription>Please enter your Organization's name.</DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <Label htmlFor="dialogOrgName" className="mb-2 block">Organization Name</Label>
-            <Input 
-              id="dialogOrgName" 
-              value={orgName} 
-              onChange={(e) => setOrgName(e.target.value)} 
-              placeholder="e.g. Prestige Academy"
-              autoFocus
-            />
+            <Input id="dialogOrgName" value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="e.g. Prestige Academy" autoFocus />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowOrgDialog(false)}>Cancel</Button>
-            <Button 
-              onClick={() => {
-                if (orgName.trim()) {
-                  setShowOrgDialog(false);
-                  performGoogleRedirect();
-                }
-              }}
-              disabled={!orgName.trim()}
-            >
-              Continue to Google
-            </Button>
+            <Button onClick={() => { if (orgName.trim()) { setShowOrgDialog(false); performGoogleRedirect(); } }} disabled={!orgName.trim()}>Continue to Google</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
