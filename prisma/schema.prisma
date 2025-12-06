@@ -92,8 +92,9 @@ model Organization {
 
   questions Question[]
   
-  // --- NEW: Relation to Subject ---
+  // --- NEW: Relation to Subject & Exam ---
   subjects  Subject[] 
+  exams     Exam[]    // Organizations can create their own exams
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -191,7 +192,12 @@ model Exam {
   name        String   @unique
   shortName   String   @unique 
   description String?
+  duration    Int      @default(45) // Duration in minutes
   apiAliases  Json?    
+  
+  organizationId String?       
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
   questions   Question[]
   quizAttempts QuizAttempt[]
 }
@@ -214,6 +220,13 @@ model Question {
   id          String    @id @default(cuid())
   text        String    @db.Text
   explanation String?   @db.Text
+  
+  // For AI Theory Grading
+  markingGuide String?  @db.Text 
+  
+  // For AI Metadata (e.g. source image analysis)
+  aiContext   Json?     
+  
   sourceApi   String?   
   year        Int
   imageUrl    String? 
@@ -284,8 +297,15 @@ model UserAnswer {
   quizAttempt       QuizAttempt @relation(fields: [quizAttemptId], references: [id], onDelete: Cascade)
   questionId        String
   question          Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  // For Objective
   selectedOptionId  String?
   option            Option?     @relation(fields: [selectedOptionId], references: [id], onDelete: Cascade)
+  
+  // For Theory
+  textAnswer        String?     @db.Text
+  aiFeedback        String?     @db.Text
+
   isCorrect         Boolean
 }
 
