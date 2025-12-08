@@ -47,6 +47,7 @@ model User {
 
   quizAttempts    QuizAttempt[]
   orders          Order[]
+  joinRequests    JoinRequest[]
 }
 
 model Account {
@@ -85,11 +86,15 @@ model Organization {
   
   // Invites sent by this org
   invites      OrgInvite[]
+  
+  // Incoming join requests
+  joinRequests JoinRequest[]
 
   questions Question[]
   
-  // --- NEW: Relation to Subject ---
+  // --- NEW: Relation to Subject & Exam ---
   subjects  Subject[] 
+  exams     Exam[]    // Organizations can create their own exams
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -104,6 +109,19 @@ model OrgInvite {
   status         InviteStatus @default(PENDING)
   expiresAt      DateTime
   createdAt      DateTime     @default(now())
+}
+
+model JoinRequest {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  status         RequestStatus @default(PENDING)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([userId, organizationId]) // One request per user per org
 }
 
 // --- 2. BILLING & PLANS ---
@@ -174,7 +192,12 @@ model Exam {
   name        String   @unique
   shortName   String   @unique 
   description String?
+  duration    Int      @default(45) // Duration in minutes
   apiAliases  Json?    
+  
+  organizationId String?       
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
   questions   Question[]
   quizAttempts QuizAttempt[]
 }
@@ -197,6 +220,13 @@ model Question {
   id          String    @id @default(cuid())
   text        String    @db.Text
   explanation String?   @db.Text
+  
+  // For AI Theory Grading
+  markingGuide String?  @db.Text 
+  
+  // For AI Metadata (e.g. source image analysis)
+  aiContext   Json?     
+  
   sourceApi   String?   
   year        Int
   imageUrl    String? 
@@ -267,8 +297,15 @@ model UserAnswer {
   quizAttempt       QuizAttempt @relation(fields: [quizAttemptId], references: [id], onDelete: Cascade)
   questionId        String
   question          Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  // For Objective
   selectedOptionId  String?
   option            Option?     @relation(fields: [selectedOptionId], references: [id], onDelete: Cascade)
+  
+  // For Theory
+  textAnswer        String?     @db.Text
+  aiFeedback        String?     @db.Text
+
   isCorrect         Boolean
 }
 
@@ -313,4 +350,10 @@ enum InviteStatus {
 enum QuizMode {
   EXAM
   PRACTICE
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }

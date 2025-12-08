@@ -11,16 +11,17 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import {
-  ChevronLeft, ChevronRight, Flag, Loader2, Lock, Timer, AlertCircle, Menu, BookOpen
+  ChevronLeft, ChevronRight, Flag, Loader2, Lock, Timer, AlertCircle, Menu, BookOpen, Sparkles, Check, X
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import DOMPurify from 'isomorphic-dompurify'; // Ensure you install: npm install isomorphic-dompurify
+import DOMPurify from 'isomorphic-dompurify'; 
 
 interface QuizClientProps {
   initialQuestions: SanitizedQuestion[];
@@ -63,9 +64,7 @@ function QuizTimer({ expiryTimestamp }: { expiryTimestamp: Date }) {
 
 // --- Helper: Safe HTML Renderer ---
 function SafeHTML({ html, className }: { html: string; className?: string }) {
-  // Configure DOMPurify to allow specific tags if needed, otherwise defaults are safe
   const sanitizedHtml = DOMPurify.sanitize(html);
-  
   return (
     <div 
       className={className}
@@ -86,6 +85,11 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitDialogOpen, setIsSubmitDialogOpen] = useState(false);
+  
+  // --- Theory Grading State ---
+  const [theoryText, setTheoryText] = useState('');
+  const [aiGrading, setAiGrading] = useState<any>(null);
+  const [gradingLoading, setGradingLoading] = useState(false);
 
   useEffect(() => {
     startQuiz(initialQuestions, mode);
@@ -95,6 +99,14 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
     setIsMounted(true);
     return () => resetQuiz(); 
   }, [initialQuestions, startQuiz, resetQuiz, timeLimitMinutes, mode]);
+
+  // Sync text input when question changes
+  useEffect(() => {
+    if (questions[currentIndex]) {
+       setTheoryText(answers.get(questions[currentIndex].id) || '');
+       setAiGrading(null); 
+    }
+  }, [currentIndex, questions, answers]);
 
   useEffect(() => {
     if (status === 'finished' && !isSubmitting) {
@@ -127,6 +139,50 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
       submit();
     }
   }, [status, isSubmitting, answers, questions, startTime, router]);
+
+  // --- Handlers ---
+  const handleTheoryChange = (val: string) => {
+      setTheoryText(val);
+      selectAnswer(questions[currentIndex].id, val);
+  };
+
+  const handleGradeTheory = async () => {
+      if (!theoryText.trim()) return;
+      setGradingLoading(true);
+      try {
+          const res = await fetch('/api/quiz/grade-theory', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ questionId: questions[currentIndex].id, answer: theoryText })
+          });
+          if (res.ok) {
+              setAiGrading(await res.json());
+          }
+      } catch(e) { console.error(e); }
+      finally { setGradingLoading(false); }
+  };
+  
+  const handleSubmit = async () => {
+        setIsSubmitting(true);
+        try {
+          const timeTaken = startTime ? Math.round((new Date().getTime() - startTime.getTime()) / 1000) : 0;
+          const response = await fetch('/api/quiz/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              answers: Array.from(answers.entries()),
+              questionIds: questions.map(q => q.id),
+              timeTaken,
+            }),
+          });
+          if (!response.ok) throw new Error('Failed to submit');
+          const result = await response.json();
+          router.push(`/quiz/results/${result.attemptId}`);
+        } catch (error: any) {
+          setSubmitError(error.message);
+          setIsSubmitting(false);
+        }
+  };
 
   if (!isMounted || status === 'loading') {
     return (
@@ -290,33 +346,77 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
                     className="prose prose-slate prose-sm md:prose-base max-w-none text-foreground leading-relaxed font-medium"
                 />
                 
-                <RadioGroup
-                    value={currentAnswer}
-                    onValueChange={(optionId) => selectAnswer(currentQuestion.id, optionId)}
-                    className="space-y-3"
-                >
-                {currentQuestion.options.map((option, index) => (
-                    <div 
-                        key={option.id} 
-                        className={cn(
-                            "flex items-start space-x-3 p-3 md:p-4 rounded-xl border cursor-pointer transition-all duration-200 relative overflow-hidden group",
-                            currentAnswer === option.id 
-                            ? "border-primary bg-primary/5 ring-1 ring-primary shadow-sm" 
-                            : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                        )}
-                        onClick={() => selectAnswer(currentQuestion.id, option.id)}
+                {/* --- OBJECTIVE OPTIONS --- */}
+                {currentQuestion.type === 'OBJECTIVE' && (
+                    <RadioGroup
+                        value={currentAnswer}
+                        onValueChange={(optionId) => selectAnswer(currentQuestion.id, optionId)}
+                        className="space-y-3"
                     >
-                    <RadioGroupItem value={option.id} id={option.id} className="mt-1 border-slate-400 text-primary" />
-                    <label htmlFor={option.id} className="flex-1 cursor-pointer leading-snug text-slate-700 group-hover:text-slate-900">
-                        <div className="flex gap-2">
-                             <span className="font-bold mr-1 text-slate-400 group-hover:text-slate-500 shrink-0 pt-0.5">{String.fromCharCode(65 + index)}.</span>
-                             {/* --- OPTION TEXT (Sanitized HTML) --- */}
-                             <SafeHTML html={option.text} className="text-sm md:text-base" />
+                    {currentQuestion.options.map((option, index) => (
+                        <div 
+                            key={option.id} 
+                            className={cn(
+                                "flex items-start space-x-3 p-3 md:p-4 rounded-xl border cursor-pointer transition-all duration-200 relative overflow-hidden group",
+                                currentAnswer === option.id 
+                                ? "border-primary bg-primary/5 ring-1 ring-primary shadow-sm" 
+                                : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                            )}
+                            onClick={() => selectAnswer(currentQuestion.id, option.id)}
+                        >
+                        <RadioGroupItem value={option.id} id={option.id} className="mt-1 border-slate-400 text-primary" />
+                        <label htmlFor={option.id} className="flex-1 cursor-pointer leading-snug text-slate-700 group-hover:text-slate-900">
+                            <div className="flex gap-2">
+                                <span className="font-bold mr-1 text-slate-400 group-hover:text-slate-500 shrink-0 pt-0.5">{String.fromCharCode(65 + index)}.</span>
+                                {/* --- OPTION TEXT (Sanitized HTML) --- */}
+                                <SafeHTML html={option.text} className="text-sm md:text-base" />
+                            </div>
+                        </label>
                         </div>
-                    </label>
+                    ))}
+                    </RadioGroup>
+                )}
+
+                {/* --- THEORY INPUT --- */}
+                {currentQuestion.type === 'THEORY' && (
+                    <div className="space-y-4">
+                        <Textarea 
+                            value={theoryText} 
+                            onChange={(e) => handleTheoryChange(e.target.value)} 
+                            placeholder="Type your answer here..." 
+                            className="min-h-[200px] font-mono text-sm bg-white focus:ring-primary"
+                        />
+                        
+                        {/* AI Grading Button (Practice Mode Only) */}
+                        {mode === 'PRACTICE' && (
+                            <div className="flex items-center gap-4">
+                                <Button 
+                                    onClick={handleGradeTheory} 
+                                    disabled={gradingLoading || !theoryText} 
+                                    variant="secondary"
+                                    className="w-full md:w-auto"
+                                >
+                                    {gradingLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : <Sparkles className="w-4 h-4 mr-2 text-purple-500"/>}
+                                    Grade with Gemini
+                                </Button>
+                            </div>
+                        )}
+
+                        {/* AI Feedback Display */}
+                        {aiGrading && (
+                            <Alert className={aiGrading.isCorrect ? "bg-green-50 border-green-200" : "bg-orange-50 border-orange-200"}>
+                                {aiGrading.isCorrect ? <Check className="w-4 h-4 text-green-600" /> : <X className="w-4 h-4 text-orange-600" />}
+                                <AlertTitle className={aiGrading.isCorrect ? "text-green-800" : "text-orange-800"}>
+                                    {aiGrading.isCorrect ? `Pass (${aiGrading.score}%)` : `Needs Improvement (${aiGrading.score}%)`}
+                                </AlertTitle>
+                                <AlertDescription className="mt-2 text-sm text-slate-700">
+                                    {aiGrading.feedback}
+                                </AlertDescription>
+                            </Alert>
+                        )}
                     </div>
-                ))}
-                </RadioGroup>
+                )}
+
             </div>
           </div>
 
@@ -378,7 +478,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
             </DialogHeader>
             <DialogFooter className="gap-2 sm:gap-0">
               <Button variant="ghost" onClick={() => setIsSubmitDialogOpen(false)}>Keep working</Button>
-              <Button variant="destructive" onClick={() => { setIsSubmitDialogOpen(false); finishQuiz(); }}>Yes, Submit</Button>
+              <Button variant="destructive" onClick={handleSubmit}>Yes, Submit</Button>
             </DialogFooter>
         </DialogContent>
       </Dialog>

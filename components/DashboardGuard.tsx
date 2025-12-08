@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Loader2, Lock, RefreshCw, LogOut, CreditCard } from 'lucide-react';
+import { Loader2, Lock, RefreshCw, LogOut, CreditCard, Building } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useSession, signOut } from 'next-auth/react';
@@ -19,6 +19,8 @@ export function DashboardGuard({ children }: { children: React.ReactNode }) {
   
   // State to determine UI text
   const [isNewUser, setIsNewUser] = useState(false);
+  const [isOrgMember, setIsOrgMember] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
 
   // Helper to load Paystack script
   const loadPaystack = async () => {
@@ -67,6 +69,8 @@ export function DashboardGuard({ children }: { children: React.ReactNode }) {
         setIsLocked(true);
         setPendingPlanId(data.planId);
         setIsNewUser(data.isNewUser); 
+        setIsOrgMember(data.isOrgMember);
+        setStatusMessage(data.statusMessage);
       } else {
         setIsLocked(false);
       }
@@ -157,13 +161,23 @@ export function DashboardGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (isLocked) {
-    // Dynamic UI Text based on isNewUser state
-    const title = isNewUser ? "Complete Your Registration" : "Subscription Expired";
-    const description = isNewUser 
-      ? "You need to complete your plan payment to activate your account." 
-      : "Your plan requires payment to continue accessing the platform.";
-    const buttonText = isNewUser ? "Pay to Activate" : "Renew Subscription";
-    const Icon = isNewUser ? CreditCard : Lock;
+    // Dynamic UI Text based on state
+    let title = "Subscription Expired";
+    let description = "Your plan requires payment to continue accessing the platform.";
+    let buttonText = "Renew Subscription";
+    let Icon = Lock;
+
+    if (isOrgMember) {
+        title = "Organization Access Paused";
+        description = statusMessage || "Your organization's subscription is currently inactive. Please contact your administrator.";
+        buttonText = ""; // No button for org members
+        Icon = Building;
+    } else if (isNewUser) {
+        title = "Complete Your Registration";
+        description = "You need to complete your plan payment to activate your account.";
+        buttonText = "Pay to Activate";
+        Icon = CreditCard;
+    }
 
     return (
       <div className="h-screen w-full flex items-center justify-center bg-muted/20 p-4">
@@ -178,20 +192,22 @@ export function DashboardGuard({ children }: { children: React.ReactNode }) {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <Button 
-              className="w-full text-lg py-6 shadow-md transition-all hover:scale-[1.02]" 
-              onClick={handlePayment}
-              disabled={paymentLoading}
-            >
-              {paymentLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                buttonText
-              )}
-            </Button>
+            {!isOrgMember && (
+                <Button 
+                className="w-full text-lg py-6 shadow-md transition-all hover:scale-[1.02]" 
+                onClick={handlePayment}
+                disabled={paymentLoading}
+                >
+                {paymentLoading ? (
+                    <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Processing...
+                    </>
+                ) : (
+                    buttonText
+                )}
+                </Button>
+            )}
             
             <div className="flex justify-center gap-6 text-sm text-muted-foreground">
               <button onClick={() => window.location.reload()} className="hover:text-primary flex items-center transition-colors">

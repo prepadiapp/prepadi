@@ -1,7 +1,8 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { UserRole } from '@prisma/client';
+import { UserRole, QuestionType } from '@prisma/client';
 import { NextResponse } from 'next/server';
+import { generateTags } from '@/lib/ai';
 
 const PAGE_SIZE = 20;
 
@@ -22,26 +23,16 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || `${PAGE_SIZE}`);
     const skip = (page - 1) * limit;
 
-    // Build the dynamic 'where' clause
-    const where: any = {
-      organizationId: null, // Only show "general" questions
-    };
+    const where: any = { organizationId: null };
 
     if (subjectId) where.subjectId = subjectId;
     if (examId) where.examId = examId;
     if (year) where.year = parseInt(year);
     if (q) {
-      where.text = {
-        contains: q,
-        mode: 'insensitive',
-      };
+      where.text = { contains: q, mode: 'insensitive' };
     }
     if (tagId) {
-      where.tags = {
-        some: {
-          id: tagId,
-        },
-      };
+      where.tags = { some: { id: tagId } };
     }
 
     const [questions, totalCount] = await prisma.$transaction([
@@ -56,9 +47,7 @@ export async function GET(request: Request) {
         skip: skip,
         take: limit,
       }),
-      prisma.question.count({
-        where,
-      }),
+      prisma.question.count({ where }),
     ]);
 
     return NextResponse.json({
@@ -83,49 +72,76 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const {
-      text, explanation, year, subjectId, examId, options,
-      tags, // This is an array of strings: e.g., ['algebra', 'trig']
+      text, explanation, year, subjectId, examId, options, tags, type, markingGuide
     } = body;
 
-    // --- (Validation is unchanged) ---
-    if (!text || !year || !subjectId || !examId || !options || options.length < 2) {
+    // 1. Common Validation
+    if (!text || !year || !subjectId || !examId) {
       return new NextResponse('Missing required fields', { status: 400 });
     }
-    const correctOptions = options.filter((opt: any) => opt.isCorrect).length;
-    if (correctOptions !== 1) {
-      return new NextResponse('There must be exactly one correct answer', { status: 400 });
+
+    // 2. Type-Specific Validation
+    const qType = (type as QuestionType) || QuestionType.OBJECTIVE;
+
+    if (qType === QuestionType.OBJECTIVE) {
+        if (!options || options.length < 2) {
+            return new NextResponse('Objective questions must have at least 2 options', { status: 400 });
+        }
+        const correctOptions = options.filter((opt: any) => opt.isCorrect).length;
+        if (correctOptions !== 1) {
+            return new NextResponse('There must be exactly one correct answer', { status: 400 });
+        }
     }
 
-    let tagIdsToConnect: { id: string }[] = [];
+    // 3. Auto-Generate Tags if Missing
+    let tagNames = tags || [];
+    
+    if (tagNames.length === 0) {
+        try {
+            // Fetch subject name for context
+            const subject = await prisma.subject.findUnique({
+                where: { id: subjectId },
+                select: { name: true }
+            });
+            
+            if (subject) {
+                console.log(`[AI] Generating tags for: ${text.substring(0, 30)}...`);
+                const aiTags = await generateTags(text, subject.name);
+                if (aiTags && aiTags.length > 0) {
+                    tagNames = aiTags;
+                }
+            }
+        } catch (aiError) {
+            console.warn("Auto-tag generation failed:", aiError);
+            // Continue without tags if AI fails
+        }
+    }
 
-    if (tags && tags.length > 0) {
-      // 1. Find which tags already exist
+    // 4. Handle Tags (Connect/Create)
+    let tagIdsToConnect: { id: string }[] = [];
+    if (tagNames.length > 0) {
       const existingTags = await prisma.tag.findMany({
-        where: { name: { in: tags } },
+        where: { name: { in: tagNames } },
         select: { id: true, name: true },
       });
       const existingTagNames = existingTags.map(t => t.name);
       tagIdsToConnect = existingTags.map(t => ({ id: t.id }));
 
-      // 2. Find out which tags are new
-      const newTagNames = tags.filter((tagName: string) => !existingTagNames.includes(tagName));
+      const newTagNames = tagNames.filter((tagName: string) => !existingTagNames.includes(tagName));
 
-      // 3. Create the new tags
       if (newTagNames.length > 0) {
         await prisma.tag.createMany({
           data: newTagNames.map((name: string) => ({ name })),
         });
-        
-        // 4. Get the IDs of the tags we just created
         const newlyCreatedTags = await prisma.tag.findMany({
           where: { name: { in: newTagNames } },
           select: { id: true },
         });
-        tagIdsToConnect.push(...newlyCreatedTags);
+        tagIdsToConnect.push(...newlyCreatedTags.map(t => ({ id: t.id })));
       }
     }
 
-    // --- Create the Question ---
+    // 5. Create Question
     const newQuestion = await prisma.question.create({
       data: {
         text,
@@ -134,16 +150,18 @@ export async function POST(request: Request) {
         subjectId,
         examId,
         organizationId: null,
-        options: {
+        type: qType,
+        markingGuide: qType === QuestionType.THEORY ? markingGuide : null,
+        options: qType === QuestionType.OBJECTIVE ? {
           createMany: {
             data: options.map((opt: { text: string, isCorrect: boolean }) => ({
               text: opt.text,
               isCorrect: opt.isCorrect,
             })),
           },
-        },
+        } : undefined,
         tags: {
-          connect: tagIdsToConnect, // Use our safe list of IDs
+          connect: tagIdsToConnect,
         },
       },
     });
