@@ -30,19 +30,20 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { examId, subjectId, year } = body;
+    const { examId, subjectId, year, tags, limit } = body;
 
-    if (!examId || !subjectId || !year) {
-      return new NextResponse('Missing examId, subjectId, or year', {
-        status: 400,
-      });
+    if (!examId) {
+      return new NextResponse('Missing examId', { status: 400 });
     }
 
-    const fullQuestions = (await questionService.getQuestions(
-      examId,
-      subjectId,
-      Number(year)
-    )) as QuestionWithRelations[];
+    // Call service with flexible params
+    const fullQuestions = (await questionService.getQuestions({
+        examId,
+        subjectId: subjectId === 'all' ? undefined : subjectId,
+        year: year === 'random' ? undefined : Number(year),
+        tags: tags ? tags.split(',') : undefined,
+        limit: limit ? Number(limit) : undefined
+    })) as QuestionWithRelations[];
 
     if (fullQuestions.length === 0) {
       return new NextResponse('No questions found for this selection.', {

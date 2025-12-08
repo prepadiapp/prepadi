@@ -156,13 +156,14 @@ export default function QuestionEditorPage() {
             if (data.type) setQType(data.type);
             if (data.explanation) setExplanation(data.explanation);
             if (data.markingGuide) setMarkingGuide(data.markingGuide);
+            if (data.tags && Array.isArray(data.tags)) setTags(data.tags); // Set tags from AI
             
             // Only update options if AI found valid ones
             if (data.options && Array.isArray(data.options) && data.options.length > 0) {
                 setOptions(data.options);
             }
             
-            toast.success("Question extracted by AI!");
+            toast.success("Question extracted by Gemini!");
         } catch (err) {
             toast.error("Could not process image. Try entering manually.");
         } finally {
@@ -285,7 +286,7 @@ export default function QuestionEditorPage() {
         <Card className="bg-indigo-50 border-indigo-100">
             <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2 text-indigo-700">
-                    <Sparkles className="w-5 h-5" /> AI Auto-Fill
+                    <Sparkles className="w-5 h-5" /> Gemini Auto-Fill
                 </CardTitle>
                 <CardDescription>Upload an image of a question (diagrams supported) to auto-fill this form.</CardDescription>
             </CardHeader>
@@ -391,7 +392,10 @@ export default function QuestionEditorPage() {
               )}
 
               <div className="space-y-2">
-                <Label>Tags</Label>
+                <div className="flex justify-between items-center">
+                    <Label>Tags</Label>
+                    {!tags.length && <span className="text-xs text-muted-foreground italic">Will auto-generate if left empty</span>}
+                </div>
                 <TagInput value={tags} onChange={setTags} placeholder="e.g., trigonometry, algebra..." />
               </div>
 

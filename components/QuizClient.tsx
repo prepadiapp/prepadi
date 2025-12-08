@@ -397,7 +397,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
                                     className="w-full md:w-auto"
                                 >
                                     {gradingLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : <Sparkles className="w-4 h-4 mr-2 text-purple-500"/>}
-                                    Grade with AI
+                                    Grade with Gemini
                                 </Button>
                             </div>
                         )}

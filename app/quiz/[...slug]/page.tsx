@@ -13,7 +13,7 @@ import Link from 'next/link';
 
 interface QuizPageProps {
   params: Promise<{ slug: string[] }>;
-  searchParams: Promise<{ mode?: string }>;
+  searchParams: Promise<{ mode?: string; tags?: string; limit?: string }>;
 }
 
 type QuestionWithRelations = Question & {
@@ -21,7 +21,7 @@ type QuestionWithRelations = Question & {
     section: Section | null;
 };
 
-async function getQuizData(slug: string[] | undefined) {
+async function getQuizData(slug: string[] | undefined, searchParams: { tags?: string; limit?: string }) {
   try {
     const session = await getAuthSession();
     if (!session?.user) {
@@ -33,48 +33,51 @@ async function getQuizData(slug: string[] | undefined) {
     }
 
     const [examSlug, subjectSlug, yearStr] = slug;
-    const year = parseInt(yearStr);
-
-    if (isNaN(year)) throw new Error('Invalid year.');
+    
+    // Handle "Random" year logic
+    const year = yearStr === 'random' ? undefined : parseInt(yearStr);
+    if (yearStr !== 'random' && isNaN(year!)) throw new Error('Invalid year.');
 
     const exam = await prisma.exam.findFirst({
       where: { shortName: { equals: examSlug, mode: 'insensitive' } },
     });
 
-    const subject = await prisma.subject.findFirst({
-      where: {
-        name: {
-          equals: subjectSlug.replace(/-/g, ' '),
-          mode: 'insensitive',
-        },
-      },
-    });
-
-    if (!exam || !subject) {
-      throw new Error(`Exam type or Subject not found.`);
+    // Handle "All" subjects logic
+    let subject = null;
+    if (subjectSlug !== 'all') {
+        subject = await prisma.subject.findFirst({
+            where: {
+                name: { equals: subjectSlug.replace(/-/g, ' '), mode: 'insensitive' },
+            },
+        });
+        if (!subject) throw new Error(`Subject not found.`);
     }
 
+    if (!exam) throw new Error(`Exam not found.`);
+
     // --- NEW: Check Plan Permissions ---
+    // If Subject/Year is specific, check access. If random, we might need broader check.
     const access = await verifyUserAccess(session.user.id, {
         examId: exam.id,
-        subjectId: subject.id,
+        subjectId: subject?.id,
         year: year
     });
 
     if (!access.allowed) {
-        // Throw a specific error to handle in UI
         throw new Error(`ACCESS_DENIED:${access.reason}`);
     }
-    // -----------------------------------
 
-    const questions = (await questionService.getQuestions(
-        exam.id, 
-        subject.id, 
-        year
-    )) as QuestionWithRelations[];
+    // Call service with parsed params
+    const questions = (await questionService.getQuestions({
+        examId: exam.id,
+        subjectId: subject?.id,
+        year: year,
+        tags: searchParams.tags ? searchParams.tags.split(',') : undefined,
+        limit: searchParams.limit ? parseInt(searchParams.limit) : undefined
+    })) as QuestionWithRelations[];
 
     if (questions.length === 0) {
-      throw new Error('No questions found.');
+      throw new Error('No questions found for this selection.');
     }
 
     const sanitizedQuestions: SanitizedQuestion[] = questions.map((q) => ({
@@ -99,15 +102,14 @@ async function getQuizData(slug: string[] | undefined) {
         questions: sanitizedQuestions,
         quizDetails: {
           examName: exam.name,
-          subjectName: subject.name,
-          year: year,
+          subjectName: subject?.name || 'Mixed Subjects',
+          year: year || new Date().getFullYear(),
         },
       },
       error: null,
     };
 
   } catch (error: any) {
-    // Preserve the specific access denied message if present
     const msg = error.message || 'An unknown error occurred.';
     return {
       data: null,
@@ -120,13 +122,12 @@ export default async function QuizPage({ params, searchParams }: QuizPageProps) 
   const resolvedParams = await params;
   const resolvedSearchParams = await searchParams;
   
-  const { data, error } = await getQuizData(resolvedParams.slug);
+  const { data, error } = await getQuizData(resolvedParams.slug, resolvedSearchParams);
   
   const modeParam = resolvedSearchParams.mode?.toUpperCase();
   const mode: QuizMode = modeParam === 'PRACTICE' ? 'PRACTICE' : 'EXAM';
 
   if (error) {
-    // Check if it's an access denied error to show a better UI
     const isAccessDenied = error.startsWith('ACCESS_DENIED:');
     const cleanError = isAccessDenied ? error.replace('ACCESS_DENIED:', '') : error;
 
@@ -144,6 +145,11 @@ export default async function QuizPage({ params, searchParams }: QuizPageProps) 
               <Button asChild variant="default" className="w-full">
                   <Link href="/dashboard/billing">Upgrade Plan</Link>
               </Button>
+          )}
+          {!isAccessDenied && (
+             <Button asChild variant="outline" className="w-full">
+                  <Link href="/dashboard">Back to Dashboard</Link>
+             </Button>
           )}
         </Alert>
       </div>
