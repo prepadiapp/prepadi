@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Plan, UserRole } from '@prisma/client'; 
@@ -14,7 +14,7 @@ import { Loader2, Check, Building, GraduationCap, ArrowLeft } from "lucide-react
 import { GoogleIcon } from '@/components/GoogleIcon';
 import { signIn } from 'next-auth/react';
 
-export default function SignupPage() {
+function SignupContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -119,10 +119,6 @@ export default function SignupPage() {
 
       // General Join: Standard verification needed
       if (flow === 'general_join' && data.success) {
-          // We use a special query param to tell verify page "After verify, go to callbackUrl"
-          // But verify page logic is simple. Let's just go to verify page.
-          // Ideally, the verification email link should handle the redirection, but that's complex.
-          // For now, standard flow.
           router.push('/verify-email');
           return;
       }
@@ -230,7 +226,7 @@ export default function SignupPage() {
             <Button variant="ghost" size="icon" onClick={() => setStep(1)}><ArrowLeft className="w-5 h-5" /></Button>
             <h1 className="text-3xl font-bold">Choose your Plan</h1>
           </div>
-
+          
           {loading ? (
             <div className="flex justify-center py-20"><Loader2 className="w-10 h-10 animate-spin text-primary"/></div>
           ) : (
@@ -358,5 +354,13 @@ export default function SignupPage() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-muted/20"><Loader2 className="w-10 h-10 animate-spin text-primary"/></div>}>
+      <SignupContent />
+    </Suspense>
   );
 }
