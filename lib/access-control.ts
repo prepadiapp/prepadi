@@ -1,105 +1,116 @@
-import { prisma } from './prisma';
+import { prisma } from '@/lib/prisma';
 
-export async function verifyUserAccess(userId: string, resource: {
+export interface AccessCheckResult {
+  allowed: boolean;
+  reason?: string;
+}
+
+export interface AccessContext {
   examId?: string;
-  subjectId?: string;
+  subjectId?: string | null;
   year?: number;
-}) {
-  // 1. Get User Subscription & Plan
+  assignmentId?: string; // For Phase 1 LMS features
+}
+
+/**
+ * Verifies if a user has access to a resource based on:
+ * 1. Specific Assignment (LMS Feature - Highest Priority)
+ * 2. Active Subscription (Org or Personal)
+ * 3. Plan Limits
+ */
+export async function verifyUserAccess(
+  userId: string,
+  context: AccessContext
+): Promise<AccessCheckResult> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
+      organization: {
+        include: {
+          subscription: { include: { plan: true } },
+        },
+      },
       subscription: { include: { plan: true } },
-      ownedOrganization: { include: { subscription: { include: { plan: true } } } },
-      // Include the organization the user is a MEMBER of
-      organization: { include: { subscription: { include: { plan: true } } } }
-    }
+    },
   });
 
-  if (!user) return { allowed: false, reason: "User not found" };
+  if (!user) return { allowed: false, reason: 'User not found' };
 
-  // Determine active subscription (Direct > Owned Org > Member Org)
-  let activeSub = null;
-  
-  if (user.subscription && user.subscription.isActive) {
-     activeSub = user.subscription;
-  } else if (user.ownedOrganization?.subscription?.isActive) {
-     activeSub = user.ownedOrganization.subscription;
-  } else if (user.organization?.subscription?.isActive) {
-     activeSub = user.organization.subscription;
-  }
+  // --- 1. Check Assignment Access (Highest Priority) ---
+  // If accessing a specific assignment, bypass subscription checks if valid
+  if (context.assignmentId) {
+    const assignment = await prisma.assignment.findUnique({
+      where: { id: context.assignmentId },
+      include: { organization: true }
+    });
 
-  if (!activeSub) {
-      return { allowed: false, reason: "No active subscription found." };
-  }
-  
-  // Check Expiry
-  if (activeSub.endDate && new Date(activeSub.endDate) < new Date()) {
-      return { allowed: false, reason: "Subscription expired." };
-  }
-
-  const features = activeSub.plan.features as any;
-  if (!features) return { allowed: true }; // No features defined = unrestricted
-
-  // 2. Check Exam Access
-  if (resource.examId) {
-    const allowedExams = features.allowedExamIds as string[] | undefined;
-    if (allowedExams && allowedExams.length > 0) {
-        if (!allowedExams.includes(resource.examId)) {
-            return { allowed: false, reason: "Exam not included in your current plan." };
-        }
+    if (!assignment) {
+      return { allowed: false, reason: 'Assignment not found.' };
     }
-  }
 
-  // 3. Check Subject Access
-  if (resource.subjectId) {
-    const allowedSubjects = features.allowedSubjectIds as string[] | undefined;
-    if (allowedSubjects && allowedSubjects.length > 0) {
-        if (!allowedSubjects.includes(resource.subjectId)) {
-            return { allowed: false, reason: "Subject not included in your current plan." };
-        }
+    if (user.organizationId !== assignment.organizationId) {
+      return { allowed: false, reason: 'You are not a member of the organization that assigned this exam.' };
     }
+
+    const now = new Date();
+    if (now < assignment.startTime) {
+      return { allowed: false, reason: `Exam has not started yet. Starts at ${assignment.startTime.toLocaleString()}` };
+    }
+    if (now > assignment.endTime) {
+      return { allowed: false, reason: 'Exam window has closed.' };
+    }
+    
+    return { allowed: true };
   }
 
-  // 4. Check Year Access
-  if (resource.year) {
-    const allowedYears = features.allowedYears as string[] | undefined;
-    if (allowedYears && allowedYears.length > 0) {
-        if (!allowedYears.includes(String(resource.year))) {
-            return { allowed: false, reason: `Year ${resource.year} is not available on your plan.` };
-        }
+  // --- 2. Determine Active Plan (Org or Personal) ---
+  let activePlan: any = null;
+  const now = new Date();
+
+  // A. Check Org Subscription
+  const orgSub = user.organization?.subscription;
+  if (
+    orgSub && 
+    orgSub.isActive && 
+    // If endDate is null, we assume it's active (e.g., lifetime), otherwise check date
+    (!orgSub.endDate || orgSub.endDate > now)
+  ) {
+    activePlan = orgSub.plan;
+  } 
+  
+  // B. Fallback to Personal Subscription
+  else if (
+    user.subscription && 
+    user.subscription.isActive && 
+    (!user.subscription.endDate || user.subscription.endDate > now)
+  ) {
+    activePlan = user.subscription.plan;
+  }
+
+  if (!activePlan) {
+    return { allowed: false, reason: 'No active subscription found. Please upgrade your plan.' };
+  }
+
+  // --- 3. Check Plan Constraints (Allowed Exams) ---
+  // Example feature logic: { "allowedExams": ["WAEC", "JAMB"] }
+  if (context.examId && activePlan.features) {
+    const features = activePlan.features as any;
+    
+    if (
+      features.allowedExams && 
+      Array.isArray(features.allowedExams) && 
+      !features.allowedExams.includes('ALL')
+    ) {
+      const exam = await prisma.exam.findUnique({ where: { id: context.examId } });
+      
+      if (exam && !features.allowedExams.includes(exam.name)) {
+        return { 
+          allowed: false, 
+          reason: `Your ${activePlan.name} plan does not cover ${exam.name} exams.` 
+        };
+      }
     }
   }
 
   return { allowed: true };
-}
-
-/**
- * Helper to get allowed IDs for filtering queries.
- * Returns undefined if no restriction (all allowed), or an array of IDs.
- */
-export async function getUserPlanFilters(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: {
-      subscription: { include: { plan: true } },
-      ownedOrganization: { include: { subscription: { include: { plan: true } } } },
-      organization: { include: { subscription: { include: { plan: true } } } }
-    }
-  });
-
-  let activeSub = null;
-  if (user?.subscription?.isActive) activeSub = user.subscription;
-  else if (user?.ownedOrganization?.subscription?.isActive) activeSub = user.ownedOrganization.subscription;
-  else if (user?.organization?.subscription?.isActive) activeSub = user.organization.subscription;
-
-  if (!activeSub) return { allowedExamIds: [], allowedSubjectIds: [], allowedYears: [] }; // Block all
-
-  const features = activeSub.plan.features as any;
-  
-  return {
-    allowedExamIds: (features?.allowedExamIds as string[] | undefined),
-    allowedSubjectIds: (features?.allowedSubjectIds as string[] | undefined),
-    allowedYears: (features?.allowedYears as string[] | undefined)
-  };
 }
