@@ -1,34 +1,41 @@
-import { getAuthSession } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
-import { UserRole } from '@prisma/client';
 import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { getAuthSession } from '@/lib/auth';
+import { UserRole } from '@prisma/client';
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getAuthSession();
-  if (!session?.user || (session.user.role !== UserRole.ADMIN && session.user.role !== UserRole.ORGANIZATION)) {
-    return new NextResponse('Unauthorized', { status: 401 });
-  }
-
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { updates } = await request.json(); // Expects [{ id: 'q1', order: 1 }, ...]
-    
-    if (!Array.isArray(updates)) {
-        return new NextResponse('Invalid payload', { status: 400 });
+    const session = await getAuthSession();
+    // Await params for Next.js 15+ compatibility
+    const resolvedParams = await params;
+
+    if (!session?.user || session.user.role !== UserRole.ADMIN) {
+      return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    // Use transaction for bulk update to ensure integrity
+    const body = await req.json();
+    const { order } = body; // Expecting [{ id: string, order: number }]
+
+    if (!Array.isArray(order)) {
+      return new NextResponse('Invalid data format', { status: 400 });
+    }
+
+    // Execute updates in a transaction for data integrity
     await prisma.$transaction(
-        updates.map((u: { id: string, order: number }) => 
-            prisma.question.update({
-                where: { id: u.id },
-                data: { order: u.order }
-            })
-        )
+      order.map((item) =>
+        prisma.question.update({
+          where: { id: item.id },
+          data: { order: item.order },
+        })
+      )
     );
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Reorder error:", error);
+    console.error('[PAPER_REORDER]', error);
     return new NextResponse('Internal Error', { status: 500 });
   }
 }

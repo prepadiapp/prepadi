@@ -1,6 +1,5 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-// We import QuestionType to handle the enum logic
 import { UserRole, QuestionType } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
@@ -11,13 +10,15 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getAuthSession();
-  if (!session?.user || session.user.role !== UserRole.ADMIN) {
-    return new NextResponse('Unauthorized', { status: 401 });
-  }
-
   try {
-    const { id } = await params;
+    const session = await getAuthSession();
+    if (!session?.user || session.user.role !== UserRole.ADMIN) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
+
+    const resolvedParams = await params;
+    const { id } = resolvedParams;
+    
     if (!id) return new NextResponse('Missing Question ID', { status: 400 });
 
     const question = await prisma.question.findUnique({
@@ -25,7 +26,7 @@ export async function GET(
       include: {
         options: true,
         tags: { select: { name: true } },
-        section: true, // --- Include Section to get the instruction text
+        section: true,
       },
     });
 
@@ -37,7 +38,7 @@ export async function GET(
     const formattedQuestion = {
       ...question,
       tags: question.tags.map(t => t.name),
-      section: question.section?.instruction || '', // Flatten section object to string
+      section: question.section?.instruction || '',
     };
 
     return NextResponse.json(formattedQuestion);
@@ -49,6 +50,7 @@ export async function GET(
 
 /**
  * PATCH: Update an existing question
+ * Supports both Full Updates (from Edit Page) and Partial Updates (from Accordion)
  */
 export async function PATCH(
   request: Request,
@@ -60,39 +62,45 @@ export async function PATCH(
   }
 
   try {
-    const { id } = await params;
+    const resolvedParams = await params;
+    const { id } = resolvedParams;
+    
     if (!id) return new NextResponse('Missing Question ID', { status: 400 });
 
     const body = await request.json();
     const {
-      text, explanation, year, subjectId, examId, options, tags,
-      // --- NEW FIELDS ---
-      type, // 'OBJECTIVE' or 'THEORY'
-      section, // Instruction text string
+      text, explanation, imageUrl, year, subjectId, examId, options, tags,
+      type, section, 
     } = body;
 
-    // --- 1. Basic Validation ---
-    if (!text || !year || !subjectId || !examId) {
-      return new NextResponse('Missing required fields', { status: 400 });
+    // --- 1. Validation ---
+    // We allow partial updates, so we only validate fields if they are present.
+    // However, text is usually required for any meaningful update.
+    if (text === '') {
+       return new NextResponse('Question text cannot be empty', { status: 400 });
     }
 
-    // --- 2. Conditional Validation based on Type ---
-    // Default to OBJECTIVE if not provided
+    // Determine Question Type (Default to OBJECTIVE if not provided, or fetch existing if needed)
+    // For partial updates without 'type', we skip type-specific validation unless 'options' are touched.
     const qType = (type as QuestionType) || QuestionType.OBJECTIVE;
 
-    if (qType === QuestionType.OBJECTIVE) {
-      if (!options || options.length < 2) {
+    if (qType === QuestionType.OBJECTIVE && options) {
+      if (Array.isArray(options) && options.length < 2) {
         return new NextResponse('Objective questions must have at least 2 options', { status: 400 });
       }
+      // Note: We skip the "exactly one correct" check for partial updates to allow flexible editing steps,
+      // but you can uncomment this if strictness is required at every save step.
+      /*
       const correctOptions = options.filter((opt: any) => opt.isCorrect).length;
       if (correctOptions !== 1) {
         return new NextResponse('Objective questions must have exactly one correct answer', { status: 400 });
       }
+      */
     }
 
-    // --- 3. Handle Tags (Existing Logic) ---
+    // --- 2. Handle Tags ---
     let tagIdsToConnect: { id: string }[] = [];
-    if (tags && tags.length > 0) {
+    if (tags && Array.isArray(tags)) {
       const existingTags = await prisma.tag.findMany({
         where: { name: { in: tags } },
         select: { id: true, name: true },
@@ -114,81 +122,97 @@ export async function PATCH(
       }
     }
 
-    // --- 4. Handle Section (NEW LOGIC) ---
-    // Find or create the section based on the instruction text
-    let sectionId: string | null = null;
-    if (section && section.trim() !== '') {
-      const sectionText = section.trim();
-      let dbSection = await prisma.section.findFirst({
-        where: { instruction: sectionText }
-      });
-      
-      if (!dbSection) {
-        dbSection = await prisma.section.create({
-          data: { instruction: sectionText }
-        });
-      }
-      sectionId = dbSection.id;
+    // --- 3. Handle Section ---
+    let sectionId: string | null | undefined = undefined;
+    if (section !== undefined) {
+        if (section && section.trim() !== '') {
+            const sectionText = section.trim();
+            let dbSection = await prisma.section.findFirst({
+                where: { instruction: sectionText }
+            });
+            if (!dbSection) {
+                dbSection = await prisma.section.create({
+                data: { instruction: sectionText }
+                });
+            }
+            sectionId = dbSection.id;
+        } else {
+            sectionId = null; // Explicitly remove section if empty string sent
+        }
     }
 
-    // --- 5. Handle Options (Existing Logic) ---
-    // Note: If qType is THEORY, options might be empty. 
-    // This logic still works: it will delete existing options if the incoming array is empty.
-    const existingOptions = await prisma.option.findMany({
-      where: { questionId: id },
-      select: { id: true },
-    });
-    const existingOptionIds = existingOptions.map(o => o.id);
-    
-    // Safe check in case options is undefined for Theory
-    const safeOptions = options || [];
-    const incomingOptionIds = safeOptions.map((o: any) => o.id).filter(Boolean);
-    
-    const optionsToDelete = existingOptionIds.filter(id => !incomingOptionIds.includes(id));
-    
-    const deleteOps = prisma.option.deleteMany({
-      where: { id: { in: optionsToDelete } },
-    });
-    
-    const updateOps = safeOptions.filter((opt: any) => opt.id).map((opt: any) => {
-      return prisma.option.update({
-        where: { id: opt.id },
-        data: { text: opt.text, isCorrect: opt.isCorrect },
-      });
-    });
-    
-    const optionsToCreate = safeOptions.filter((opt: any) => !opt.id);
-    const createOps = prisma.option.createMany({
-      data: optionsToCreate.map((opt: any) => ({
-        questionId: id,
-        text: opt.text,
-        isCorrect: opt.isCorrect,
-      })),
-    });
+    // --- 4. Handle Options ---
+    const deleteOps: any[] = [];
+    const updateOps: any[] = [];
+    let createOps: any = null;
 
-    // --- 6. Update the Question ---
-    const [updatedQuestion] = await prisma.$transaction([
-      prisma.question.update({
-        where: { id },
-        data: {
-          text,
-          explanation,
-          year: parseInt(year),
-          subjectId,
-          examId,
-          // --- Update New Fields ---
-          type: qType,
-          sectionId: sectionId, // Updates or disconnects (if null)
-          // -----------------------
-          tags: {
-            set: tagIdsToConnect,
-          },
-        },
-      }),
-      deleteOps,
-      ...updateOps,
-      createOps,
-    ]);
+    if (options && Array.isArray(options)) {
+        const existingOptions = await prisma.option.findMany({
+            where: { questionId: id },
+            select: { id: true },
+        });
+        const existingOptionIds = existingOptions.map(o => o.id);
+        
+        const safeOptions = options || [];
+        // Filter out temp IDs from frontend (e.g. 'temp-123')
+        const incomingOptionIds = safeOptions
+            .filter((o: any) => o.id && !o.id.toString().startsWith('temp-'))
+            .map((o: any) => o.id);
+        
+        const optionsToDelete = existingOptionIds.filter(optId => !incomingOptionIds.includes(optId));
+        
+        if (optionsToDelete.length > 0) {
+            deleteOps.push(prisma.option.deleteMany({
+                where: { id: { in: optionsToDelete } },
+            }));
+        }
+        
+        safeOptions.forEach((opt: any) => {
+            if (opt.id && !opt.id.toString().startsWith('temp-')) {
+                updateOps.push(prisma.option.update({
+                    where: { id: opt.id },
+                    data: { text: opt.text, isCorrect: opt.isCorrect },
+                }));
+            }
+        });
+        
+        const optionsToCreate = safeOptions.filter((opt: any) => !opt.id || opt.id.toString().startsWith('temp-'));
+        if (optionsToCreate.length > 0) {
+             createOps = prisma.option.createMany({
+                data: optionsToCreate.map((opt: any) => ({
+                    questionId: id,
+                    text: opt.text,
+                    isCorrect: opt.isCorrect,
+                })),
+            });
+        }
+    }
+
+    // --- 5. Build Update Data Object (Partial Support) ---
+    const updateData: any = {};
+    if (text) updateData.text = text;
+    if (explanation !== undefined) updateData.explanation = explanation;
+    if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
+    if (year) updateData.year = parseInt(year);
+    if (subjectId) updateData.subjectId = subjectId;
+    if (examId) updateData.examId = examId;
+    if (type) updateData.type = type;
+    if (sectionId !== undefined) updateData.sectionId = sectionId;
+    if (tags) updateData.tags = { set: tagIdsToConnect };
+
+    // --- 6. Execute Transaction ---
+    const transactionOps = [
+        prisma.question.update({
+            where: { id },
+            data: updateData,
+        }),
+        ...deleteOps,
+        ...updateOps,
+    ];
+    
+    if (createOps) transactionOps.push(createOps);
+
+    const [updatedQuestion] = await prisma.$transaction(transactionOps);
 
     return NextResponse.json(updatedQuestion);
 
@@ -200,6 +224,7 @@ export async function PATCH(
 
 /**
  * DELETE: Delete a question
+ * Includes cleanup of UserAnswers and Organization check
  */
 export async function DELETE(
   request: Request,
@@ -211,10 +236,12 @@ export async function DELETE(
   }
 
   try {
-    const { id } = await params;
+    const resolvedParams = await params;
+    const { id } = resolvedParams;
+    
     if (!id) return new NextResponse('Missing Question ID', { status: 400 });
 
-    // Use a transaction to delete
+    // Use a transaction to delete safely
     await prisma.$transaction([
       prisma.userAnswer.deleteMany({
         where: { questionId: id },
@@ -222,7 +249,9 @@ export async function DELETE(
       prisma.question.delete({
         where: { 
           id: id,
-          organizationId: null, // Ensure admin can only delete general questions
+          // Ensure admin can only delete general questions (optional safeguard)
+          // Remove this check if Admin should be able to delete Org questions too
+          organizationId: null, 
         },
       }),
     ]);

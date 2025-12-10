@@ -1,244 +1,94 @@
-'use client';
-
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import { prisma } from '@/lib/prisma';
+import { notFound } from 'next/navigation';
+import { PaperEditor } from '@/components/admin/PaperEditor';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, Save, GripVertical, CheckCircle, Trash2, ArrowLeft, Plus } from 'lucide-react';
-import { Toaster, toast } from 'sonner';
+import { ArrowLeft, BookOpen, Calendar, Eye } from 'lucide-react';
 import Link from 'next/link';
+import { Badge } from '@/components/ui/badge';
+import { EditPaperDialog } from '@/components/admin/EditPaperDialog';
+import { Toaster } from 'sonner';
 
-type QuestionItem = {
-  id: string;
-  text: string;
-  type: 'OBJECTIVE' | 'THEORY';
-  order: number;
-};
+interface PageProps {
+  params: Promise<{ id: string }>;
+}
 
-export default function PaperEditorPage() {
-  const params = useParams();
-  const paperId = params.id as string; 
+export default async function PaperManagePage({ params }: PageProps) {
+  const resolvedParams = await params;
+  const { id } = resolvedParams;
 
-  const [paper, setPaper] = useState<any>(null);
-  const [allQuestions, setAllQuestions] = useState<QuestionItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'OBJECTIVE' | 'THEORY'>('OBJECTIVE');
-  
-  // DnD Hydration Fix
-  const [enabled, setEnabled] = useState(false);
-  useEffect(() => {
-    const animation = requestAnimationFrame(() => setEnabled(true));
-    return () => {
-      cancelAnimationFrame(animation);
-      setEnabled(false);
-    };
-  }, []);
-
-  useEffect(() => {
-    const loadPaper = async () => {
-      try {
-        const res = await fetch(`/api/admin/papers/${paperId}`);
-        if (!res.ok) throw new Error("Failed to load paper");
-        const data = await res.json();
-        setPaper(data);
-        // Ensure default ordering if order is 0 or null
-        const sortedQs = (data.questions || []).sort((a: any, b: any) => {
-            if (a.order === 0 && b.order === 0) return 0; // Keep DB natural order
-            return (a.order || 9999) - (b.order || 9999);
-        });
-        setAllQuestions(sortedQs);
-      } catch (e) {
-        toast.error("Could not load paper details");
-      } finally {
-        setLoading(false);
+  const paper = await prisma.examPaper.findUnique({
+    where: { id },
+    include: {
+      exam: true,
+      subject: true,
+      questions: {
+        include: { options: true },
+        orderBy: { order: 'asc' }
       }
-    };
-    loadPaper();
-  }, [paperId]);
-
-  const onDragEnd = (result: DropResult) => {
-    if (!result.destination) return;
-
-    const currentTabQuestions = allQuestions.filter(q => q.type === activeTab);
-    const newTabItems = Array.from(currentTabQuestions);
-    const [reorderedItem] = newTabItems.splice(result.source.index, 1);
-    newTabItems.splice(result.destination.index, 0, reorderedItem);
-
-    // Update order strictly within this view
-    const updatedTabItems = newTabItems.map((q, idx) => ({ ...q })); 
-    
-    const otherTypeItems = allQuestions.filter(q => q.type !== activeTab);
-    // Note: This simplistic merge puts all active tab items at the end visually if not carefully sorted again.
-    // Ideally, you keep global index, but for now we re-normalize on save.
-    setAllQuestions([...otherTypeItems, ...updatedTabItems]);
-  };
-
-  const handleSaveOrder = async () => {
-    setSaving(true);
-    try {
-      // Strategy: We only care about the order of questions in the *current* tab being saved relative to each other?
-      // Or should we save everything? Let's save the current view's order.
-      const currentTabQuestions = allQuestions.filter(q => q.type === activeTab);
-      
-      const payload = currentTabQuestions.map((q, idx) => ({ 
-          id: q.id, 
-          order: idx + 1 // 1-based index
-      }));
-
-      const res = await fetch(`/api/admin/papers/${paperId}/reorder`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ updates: payload })
-      });
-
-      if (!res.ok) throw new Error("Failed to save order");
-      toast.success("Order saved successfully!");
-    } catch (e) {
-      toast.error("Save failed");
-    } finally {
-      setSaving(false);
     }
-  };
+  });
 
-  const handleVerify = async () => {
-    try {
-        const res = await fetch(`/api/admin/papers/${paperId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ isVerified: true })
-        });
-        if(res.ok) {
-            setPaper({ ...paper, isVerified: true });
-            toast.success("Paper verified!");
-        }
-    } catch(e) { toast.error("Verification failed"); }
-  };
-
-  if (loading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin w-8 h-8 text-primary" /></div>;
-
-  const questionsToShow = allQuestions.filter(q => q.type === activeTab);
+  if (!paper) notFound();
 
   return (
-    <div className="space-y-6 pb-20">
-      <Toaster richColors />
+    <div className="min-h-screen bg-slate-50/50 pb-20 font-sans">
+      <Toaster richColors position="top-center" />
       
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" asChild>
-                <Link href={`/admin/papers`}><ArrowLeft className="w-5 h-5"/></Link>
-            </Button>
-            <div>
-                <h1 className="text-2xl font-bold flex items-center gap-2">
-                    {paper?.title || "Untitled Paper"} 
-                    {paper?.isVerified && <CheckCircle className="w-5 h-5 text-green-500" />}
-                </h1>
-                <p className="text-muted-foreground text-sm flex gap-2">
-                    <Badge variant="outline">{paper?.subject?.name}</Badge>
-                    <Badge variant="outline">{paper?.year}</Badge>
-                </p>
-            </div>
-        </div>
-        <div className="flex gap-2">
-            {!paper?.isVerified && (
-                <Button variant="outline" onClick={handleVerify} className="border-green-200 hover:bg-green-50 text-green-700">
-                    <CheckCircle className="w-4 h-4 mr-2"/> Mark Verified
-                </Button>
-            )}
-            <Button onClick={handleSaveOrder} disabled={saving}>
-                {saving ? <Loader2 className="animate-spin w-4 h-4 mr-2"/> : <Save className="w-4 h-4 mr-2"/>}
-                Save Order
-            </Button>
+      {/* --- Sticky Header --- */}
+      <div className="bg-white/80 backdrop-blur-md border-b sticky top-0 z-20 shadow-sm transition-all">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
+           
+           {/* Left: Back + Title + Meta */}
+           <div className="flex items-start gap-2 md:gap-3 w-full md:w-auto">
+              <Link href="/admin/papers" className="mt-0.5 md:mt-1 shrink-0">
+                 <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-full">
+                    <ArrowLeft className="w-4 h-4 md:w-5 md:h-5" />
+                 </Button>
+              </Link>
+              
+              <div className="flex-1 min-w-0">
+                 <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
+                    <h1 className="font-bold text-base md:text-lg lg:text-xl text-slate-900 tracking-tight truncate leading-tight max-w-[200px] sm:max-w-none">
+                       {paper.title}
+                    </h1>
+                    <EditPaperDialog paper={paper} />
+                 </div>
+                 
+                 <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px] md:text-xs font-medium text-slate-500">
+                    <div className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                        <BookOpen className="w-3 h-3 text-slate-400"/> 
+                        <span className="truncate max-w-[100px]">{paper.subject?.name}</span>
+                    </div>
+                    <div className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                        <Calendar className="w-3 h-3 text-slate-400"/> 
+                        <span>{paper.year}</span>
+                    </div>
+                    <Badge variant={paper.isPublic ? "default" : "secondary"} className="h-4 px-1.5 text-[9px] md:text-[10px] font-bold tracking-wide uppercase">
+                       {paper.isPublic ? "Published" : "Draft"}
+                    </Badge>
+                 </div>
+              </div>
+           </div>
+           
+           {/* Right: Actions */}
+           <div className="flex items-center gap-2 w-full md:w-auto justify-end border-t border-slate-100 md:border-0 pt-2 md:pt-0 mt-1 md:mt-0">
+              <Button size="sm" variant="outline" className="text-[10px] md:text-xs h-8 md:h-9 hidden sm:flex items-center gap-1.5 bg-white">
+                 <Eye className="w-3 h-3 md:w-3.5 md:h-3.5" /> Preview
+              </Button>
+              <Button size="sm" className="text-[10px] md:text-xs h-8 md:h-9 font-semibold shadow-md bg-primary hover:bg-primary/90 w-full sm:w-auto">
+                 Add Question
+              </Button>
+           </div>
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="pb-2 border-b">
-            <div className="flex justify-between items-center">
-                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-[400px]">
-                    <TabsList>
-                        <TabsTrigger value="OBJECTIVE">Objective ({allQuestions.filter(q => q.type === 'OBJECTIVE').length})</TabsTrigger>
-                        <TabsTrigger value="THEORY">Theory ({allQuestions.filter(q => q.type === 'THEORY').length})</TabsTrigger>
-                    </TabsList>
-                </Tabs>
-                <Button variant="secondary" size="sm" asChild>
-                    <Link href={`/admin/questions/new?paperId=${paperId}&type=${activeTab}&examId=${paper?.examId}&subjectId=${paper?.subjectId}&year=${paper?.year}`}>
-                        <Plus className="w-4 h-4 mr-2" /> Add Question
-                    </Link>
-                </Button>
-            </div>
-        </CardHeader>
-        <CardContent className="pt-6 bg-slate-50/50 min-h-[500px]">
-            {questionsToShow.length === 0 ? (
-                <div className="text-center py-20 text-muted-foreground border-2 border-dashed rounded-lg bg-white">
-                    <p className="mb-4">No {activeTab.toLowerCase()} questions found.</p>
-                    <Button variant="outline" asChild>
-                        <Link href={`/admin/questions/new?paperId=${paperId}&type=${activeTab}&examId=${paper?.examId}&subjectId=${paper?.subjectId}&year=${paper?.year}`}>
-                            Add your first question
-                        </Link>
-                    </Button>
-                </div>
-            ) : (
-                enabled && (
-                    <DragDropContext onDragEnd={onDragEnd}>
-                        <Droppable droppableId="questions-list">
-                            {(provided) => (
-                                <ul 
-                                    {...provided.droppableProps} 
-                                    ref={provided.innerRef} 
-                                    className="space-y-3"
-                                >
-                                    {questionsToShow.map((q, index) => (
-                                        <Draggable key={q.id} draggableId={q.id} index={index}>
-                                            {(provided, snapshot) => (
-                                                <li
-                                                    ref={provided.innerRef}
-                                                    {...provided.draggableProps}
-                                                    className={`flex items-start gap-3 p-4 bg-white border rounded-xl transition-all ${snapshot.isDragging ? 'shadow-lg ring-2 ring-primary z-50' : 'hover:border-primary/50'}`}
-                                                >
-                                                    <div 
-                                                        {...provided.dragHandleProps}
-                                                        className="mt-1 text-muted-foreground cursor-grab active:cursor-grabbing p-1 hover:bg-slate-100 rounded"
-                                                    >
-                                                        <GripVertical className="w-5 h-5" />
-                                                    </div>
-                                                    
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-2 mb-1">
-                                                            <Badge variant="secondary" className="font-mono text-xs">
-                                                                #{index + 1}
-                                                            </Badge>
-                                                            {q.type === 'THEORY' && <Badge variant="outline" className="text-[10px] border-purple-200 text-purple-700 bg-purple-50">Theory</Badge>}
-                                                        </div>
-                                                        <div className="text-sm font-medium text-slate-800 line-clamp-2" dangerouslySetInnerHTML={{ __html: q.text }} />
-                                                    </div>
-
-                                                    <div className="flex items-center gap-1">
-                                                        <Button variant="ghost" size="icon" asChild>
-                                                            <Link href={`/admin/questions/${q.id}`}>
-                                                                <span className="sr-only">Edit</span>✎
-                                                            </Link>
-                                                        </Button>
-                                                        <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-700 hover:bg-red-50">
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </Button>
-                                                    </div>
-                                                </li>
-                                            )}
-                                        </Draggable>
-                                    ))}
-                                    {provided.placeholder}
-                                </ul>
-                            )}
-                        </Droppable>
-                    </DragDropContext>
-                )
-            )}
-        </CardContent>
-      </Card>
+      {/* --- Main Content Area --- */}
+      <main className="max-w-3xl mx-auto px-4 md:px-6 py-4 md:py-8">
+         <PaperEditor 
+            paperId={paper.id} 
+            initialQuestions={paper.questions as any} 
+         />
+      </main>
     </div>
   );
 }
