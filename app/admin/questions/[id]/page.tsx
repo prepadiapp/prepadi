@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Exam, Subject, QuestionType } from '@prisma/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,7 +18,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { TagInput } from '@/components/admin/TagInput';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle, ArrowLeft, Loader2, Plus, Trash2, Sparkles, Upload } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Loader2, Plus, Trash2, Sparkles } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import Link from 'next/link';
 
@@ -33,27 +33,36 @@ type FilterData = {
   subjects: Subject[];
 };
 
-export default function QuestionEditorPage() {
+function QuestionEditorContent() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
+  
   const id = params.id as string;
   const isEditMode = id !== 'new';
+
+  // Context Params (from Paper Manager)
+  const contextPaperId = searchParams.get('paperId');
+  const contextExamId = searchParams.get('examId');
+  const contextSubjectId = searchParams.get('subjectId');
+  const contextYear = searchParams.get('year');
+  const contextType = searchParams.get('type');
 
   const [filterData, setFilterData] = useState<FilterData>({ exams: [], subjects: [] });
   
   // --- Form State ---
   const [text, setText] = useState('');
   const [explanation, setExplanation] = useState('');
-  const [year, setYear] = useState<number>(new Date().getFullYear());
-  const [subjectId, setSubjectId] = useState('');
-  const [examId, setExamId] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
+  // Initialize with Context or Default
+  const [year, setYear] = useState<number>(contextYear ? Number(contextYear) : new Date().getFullYear());
+  const [subjectId, setSubjectId] = useState(contextSubjectId || '');
+  const [examId, setExamId] = useState(contextExamId || '');
   
-  // --- NEW STATE (AI & Theory) ---
+  const [tags, setTags] = useState<string[]>([]);
   const [section, setSection] = useState('');
-  const [qType, setQType] = useState<QuestionType>(QuestionType.OBJECTIVE);
-  const [markingGuide, setMarkingGuide] = useState(''); // For Theory
-  const [parsingImage, setParsingImage] = useState(false); // AI Loading State
+  const [qType, setQType] = useState<QuestionType>((contextType as QuestionType) || QuestionType.OBJECTIVE);
+  const [markingGuide, setMarkingGuide] = useState('');
+  const [parsingImage, setParsingImage] = useState(false);
 
   const [options, setOptions] = useState<FormOption[]>([
     { text: '', isCorrect: true },
@@ -96,10 +105,8 @@ export default function QuestionEditorPage() {
         setYear(question.year);
         setSubjectId(question.subjectId);
         setExamId(question.examId);
-        setTags(question.tags);
-        
-        // Populate New Fields
-        setSection(question.section || ''); 
+        setTags(question.tags?.map((t: any) => t.name) || []);
+        setSection(question.section?.instruction || ''); 
         setQType(question.type as QuestionType);
         setMarkingGuide(question.markingGuide || '');
 
@@ -109,12 +116,8 @@ export default function QuestionEditorPage() {
             text: opt.text,
             isCorrect: opt.isCorrect,
           })));
-        } else {
-          // Reset options if loading a Theory question
-          setOptions([
-            { text: '', isCorrect: true },
-            { text: '', isCorrect: false },
-          ]);
+        } else if (question.type === 'THEORY') {
+           setOptions([]);
         }
 
       } catch (err: any) {
@@ -128,18 +131,16 @@ export default function QuestionEditorPage() {
     fetchQuestionData();
   }, [id, isEditMode]);
 
-  // --- AI Image Parser Handler ---
+  // --- Handlers ---
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Convert to Base64
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = async () => {
         const base64 = reader.result as string;
         setParsingImage(true);
-        
         try {
             const res = await fetch('/api/admin/questions/parse-image', {
                 method: 'POST',
@@ -148,31 +149,26 @@ export default function QuestionEditorPage() {
             });
 
             if(!res.ok) throw new Error("Failed to parse image");
-            
             const data = await res.json();
             
-            // Auto-fill fields from AI response
             setText(data.text);
             if (data.type) setQType(data.type);
             if (data.explanation) setExplanation(data.explanation);
             if (data.markingGuide) setMarkingGuide(data.markingGuide);
-            if (data.tags && Array.isArray(data.tags)) setTags(data.tags); // Set tags from AI
+            if (data.tags && Array.isArray(data.tags)) setTags(data.tags);
             
-            // Only update options if AI found valid ones
             if (data.options && Array.isArray(data.options) && data.options.length > 0) {
                 setOptions(data.options);
             }
-            
-            toast.success("Question extracted by Gemini!");
+            toast.success("Question extracted by AI!");
         } catch (err) {
-            toast.error("Could not process image. Try entering manually.");
+            toast.error("Could not process image.");
         } finally {
             setParsingImage(false);
         }
     };
   };
 
-  // --- Handlers ---
   const handleOptionTextChange = (index: number, value: string) => {
     const newOptions = [...options];
     newOptions[index].text = value;
@@ -197,9 +193,7 @@ export default function QuestionEditorPage() {
     if (options.length > 2) {
       const newOptions = [...options];
       newOptions.splice(index, 1);
-      if (!newOptions.some(opt => opt.isCorrect)) {
-        newOptions[0].isCorrect = true;
-      }
+      if (!newOptions.some(opt => opt.isCorrect)) newOptions[0].isCorrect = true;
       setOptions(newOptions);
     }
   };
@@ -208,13 +202,8 @@ export default function QuestionEditorPage() {
     e.preventDefault();
     setSubmitting(true);
     
-    const apiPath = isEditMode
-      ? `/api/admin/questions/${id}`
-      : '/api/admin/questions';
-    
+    const apiPath = isEditMode ? `/api/admin/questions/${id}` : '/api/admin/questions';
     const method = isEditMode ? 'PATCH' : 'POST';
-
-    // Only send options if Objective. If Theory, send empty array to avoid validation errors.
     const optionsToSend = qType === QuestionType.OBJECTIVE ? options : [];
 
     try {
@@ -231,7 +220,8 @@ export default function QuestionEditorPage() {
           tags,
           type: qType,
           section,
-          markingGuide // <-- Include marking guide for Theory
+          markingGuide,
+          paperId: contextPaperId // Link to paper if context exists
         }),
       });
 
@@ -241,7 +231,7 @@ export default function QuestionEditorPage() {
       }
 
       toast.success(`Question ${isEditMode ? 'updated' : 'created'} successfully!`);
-      router.push('/admin/questions');
+      router.back(); // Go back to Paper Manager or Question List
 
     } catch (err: any) {
       toast.error(err.message);
@@ -249,96 +239,76 @@ export default function QuestionEditorPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-[calc(100vh-200px)]">
-        <Loader2 className="w-12 h-12 animate-spin text-primary" />
-      </div>
-    );
-  }
+  if (loading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin" /></div>;
+  if (error) return <Alert variant="destructive"><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
 
-  if (error) {
-    return (
-      <Alert variant="destructive">
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Error</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
-    );
-  }
+  // CONDITIONAL RENDERING: Hide Inputs if Context Exists
+  const isContextFixed = !!contextPaperId || !!contextExamId;
 
   return (
-    <>
-      <Toaster richColors />
-      <section className="space-y-6 pb-20">
+    <section className="space-y-6 pb-20">
         <div className="flex items-center gap-4">
-          <Button asChild variant="outline" size="icon">
-            <Link href="/admin/questions">
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
+          <Button variant="outline" size="icon" onClick={() => router.back()}>
+            <ArrowLeft className="w-4 h-4" />
           </Button>
           <h1 className="text-3xl font-bold">
             {isEditMode ? 'Edit Question' : 'Add New Question'}
           </h1>
         </div>
 
-        {/* AI Auto-Fill Card */}
+        {/* AI Card */}
         <Card className="bg-indigo-50 border-indigo-100">
             <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2 text-indigo-700">
                     <Sparkles className="w-5 h-5" /> Gemini Auto-Fill
                 </CardTitle>
-                <CardDescription>Upload an image of a question (diagrams supported) to auto-fill this form.</CardDescription>
+                <CardDescription>Upload an image to auto-fill this form.</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="flex items-center gap-4">
                     <Input type="file" accept="image/*" onChange={handleImageUpload} disabled={parsingImage} className="bg-white max-w-sm" />
-                    {parsingImage && <span className="text-sm text-indigo-600 animate-pulse flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin"/> Analyzing...</span>}
+                    {parsingImage && <span className="text-sm text-indigo-600 animate-pulse flex items-center gap-2">Analyzing...</span>}
                 </div>
             </CardContent>
         </Card>
 
-        {/* Question Form */}
         <form onSubmit={handleSubmit}>
           <Card>
             <CardHeader>
               <CardTitle>Question Details</CardTitle>
-              <CardDescription>Fill out the details for this question.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="exam">Exam</Label>
-                  <Select value={examId} onValueChange={setExamId} required>
-                    <SelectTrigger id="exam">
-                      <SelectValue placeholder="Select exam" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filterData.exams.map((e) => (
-                        <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="subject">Subject</Label>
-                  <Select value={subjectId} onValueChange={setSubjectId} required>
-                    <SelectTrigger id="subject">
-                      <SelectValue placeholder="Select subject" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filterData.subjects.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="year">Year</Label>
-                  <Input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} placeholder="2023" required />
-                </div>
-              </div>
+              {/* Context Fields - Hidden if Fixed, Visible if Standard */}
+              {!isContextFixed ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Exam</Label>
+                      <Select value={examId} onValueChange={setExamId} required>
+                        <SelectTrigger><SelectValue placeholder="Select exam" /></SelectTrigger>
+                        <SelectContent>{filterData.exams.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Subject</Label>
+                      <Select value={subjectId} onValueChange={setSubjectId} required>
+                        <SelectTrigger><SelectValue placeholder="Select subject" /></SelectTrigger>
+                        <SelectContent>{filterData.subjects.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Year</Label>
+                      <Input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} required />
+                    </div>
+                  </div>
+              ) : (
+                  <Alert className="bg-blue-50 text-blue-800 border-blue-200">
+                      <AlertCircle className="w-4 h-4"/>
+                      <AlertDescription>
+                          Adding to <strong>{filterData.exams.find(e => e.id === examId)?.name} {filterData.subjects.find(s => s.id === subjectId)?.name} {year}</strong>
+                      </AlertDescription>
+                  </Alert>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -346,8 +316,8 @@ export default function QuestionEditorPage() {
                   <Select value={qType} onValueChange={(val) => setQType(val as QuestionType)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={QuestionType.OBJECTIVE}>Objective (Multiple Choice)</SelectItem>
-                      <SelectItem value={QuestionType.THEORY}>Theory (Essay)</SelectItem>
+                      <SelectItem value={QuestionType.OBJECTIVE}>Objective</SelectItem>
+                      <SelectItem value={QuestionType.THEORY}>Theory</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -358,11 +328,10 @@ export default function QuestionEditorPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="text">Question Text</Label>
-                <Textarea id="text" value={text} onChange={(e) => setText(e.target.value)} rows={5} required />
+                <Label>Question Text</Label>
+                <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={5} required />
               </div>
 
-              {/* Conditional Options or Marking Guide */}
               {qType === QuestionType.OBJECTIVE ? (
                 <div className="space-y-2">
                   <Label>Options</Label>
@@ -378,25 +347,15 @@ export default function QuestionEditorPage() {
                   {options.length < 5 && <Button type="button" variant="outline" size="sm" onClick={addOption}><Plus className="w-4 h-4 mr-2" />Add Option</Button>}
                 </div>
               ) : (
-                <div className="space-y-2 p-4 bg-yellow-50 border border-yellow-100 rounded-md">
-                    <Label className="text-yellow-800">AI Marking Guide / Correct Answer</Label>
-                    <p className="text-xs text-muted-foreground mb-2">Provide keywords, key points, or the full answer. The AI uses this to grade student answers.</p>
-                    <Textarea 
-                      value={markingGuide} 
-                      onChange={(e) => setMarkingGuide(e.target.value)} 
-                      placeholder="e.g., Key points: osmosis, semi-permeable membrane..." 
-                      rows={4} 
-                      className="bg-white"
-                    />
+                <div className="space-y-2">
+                    <Label>Marking Guide (AI)</Label>
+                    <Textarea value={markingGuide} onChange={(e) => setMarkingGuide(e.target.value)} rows={4} placeholder="Key points for grading..." />
                 </div>
               )}
 
               <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                    <Label>Tags</Label>
-                    {!tags.length && <span className="text-xs text-muted-foreground italic">Will auto-generate if left empty</span>}
-                </div>
-                <TagInput value={tags} onChange={setTags} placeholder="e.g., trigonometry, algebra..." />
+                <Label>Tags</Label>
+                <TagInput value={tags} onChange={setTags} />
               </div>
 
               <div className="space-y-2">
@@ -411,7 +370,10 @@ export default function QuestionEditorPage() {
             <Button type="submit" disabled={submitting}>{submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Save Question</Button>
           </div>
         </form>
-      </section>
-    </>
+    </section>
   );
+}
+
+export default function QuestionEditorPage() {
+    return <Suspense fallback={<div className="p-10 text-center">Loading...</div>}><QuestionEditorContent /></Suspense>;
 }

@@ -1,11 +1,28 @@
-import { prisma } from './prisma';
+import { prisma } from '@/lib/prisma';
 
-export async function verifyUserAccess(userId: string, resource: {
+export interface AccessCheckResult {
+  allowed: boolean;
+  reason?: string;
+}
+
+export interface AccessContext {
   examId?: string;
-  subjectId?: string;
+  subjectId?: string | null;
   year?: number;
-}) {
-  // 1. Get User Subscription & Plan
+  assignmentId?: string; // For Phase 1 LMS features
+}
+
+/**
+ * Verifies if a user has access to a resource based on:
+ * 1. Specific Assignment (LMS Feature - Highest Priority)
+ * 2. Active Subscription (Org or Personal)
+ * 3. Plan Limits
+ */
+export async function verifyUserAccess(
+  userId: string,
+  context: AccessContext
+): Promise<AccessCheckResult> {
+  // 1. Get User with all Subscription & Organization Data
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
@@ -18,7 +35,38 @@ export async function verifyUserAccess(userId: string, resource: {
 
   if (!user) return { allowed: false, reason: "User not found" };
 
-  // Determine active subscription (Direct > Owned Org > Member Org)
+  // --- 1. Check Assignment Access (Highest Priority) ---
+  // If accessing a specific assignment, bypass subscription checks if valid
+  if (context.assignmentId) {
+    const assignment = await prisma.assignment.findUnique({
+      where: { id: context.assignmentId },
+      include: { organization: true }
+    });
+
+    if (!assignment) {
+      return { allowed: false, reason: 'Assignment not found.' };
+    }
+
+    // Check membership or ownership
+    const isMember = user.organizationId === assignment.organizationId;
+    const isOwner = user.ownedOrganization?.id === assignment.organizationId;
+
+    if (!isMember && !isOwner) {
+      return { allowed: false, reason: 'You are not a member of the organization that assigned this exam.' };
+    }
+
+    const now = new Date();
+    if (now < assignment.startTime) {
+      return { allowed: false, reason: `Exam has not started yet. Starts at ${assignment.startTime.toLocaleString()}` };
+    }
+    if (now > assignment.endTime) {
+      return { allowed: false, reason: 'Exam window has closed.' };
+    }
+    
+    return { allowed: true };
+  }
+
+  // --- 2. Determine Active Subscription (Direct > Owned Org > Member Org) ---
   let activeSub = null;
   
   if (user.subscription && user.subscription.isActive) {
@@ -41,32 +89,34 @@ export async function verifyUserAccess(userId: string, resource: {
   const features = activeSub.plan.features as any;
   if (!features) return { allowed: true }; // No features defined = unrestricted
 
-  // 2. Check Exam Access
-  if (resource.examId) {
+  // --- 3. Check Plan Constraints ---
+
+  // Check Exam Access
+  if (context.examId) {
     const allowedExams = features.allowedExamIds as string[] | undefined;
-    if (allowedExams && allowedExams.length > 0) {
-        if (!allowedExams.includes(resource.examId)) {
+    if (allowedExams && allowedExams.length > 0 && !allowedExams.includes('ALL')) {
+        if (!allowedExams.includes(context.examId)) {
             return { allowed: false, reason: "Exam not included in your current plan." };
         }
     }
   }
 
-  // 3. Check Subject Access
-  if (resource.subjectId) {
+  // Check Subject Access
+  if (context.subjectId) {
     const allowedSubjects = features.allowedSubjectIds as string[] | undefined;
-    if (allowedSubjects && allowedSubjects.length > 0) {
-        if (!allowedSubjects.includes(resource.subjectId)) {
+    if (allowedSubjects && allowedSubjects.length > 0 && !allowedSubjects.includes('ALL')) {
+        if (!allowedSubjects.includes(context.subjectId)) {
             return { allowed: false, reason: "Subject not included in your current plan." };
         }
     }
   }
 
-  // 4. Check Year Access
-  if (resource.year) {
+  // Check Year Access
+  if (context.year) {
     const allowedYears = features.allowedYears as string[] | undefined;
-    if (allowedYears && allowedYears.length > 0) {
-        if (!allowedYears.includes(String(resource.year))) {
-            return { allowed: false, reason: `Year ${resource.year} is not available on your plan.` };
+    if (allowedYears && allowedYears.length > 0 && !allowedYears.includes('ALL')) {
+        if (!allowedYears.includes(String(context.year))) {
+            return { allowed: false, reason: `Year ${context.year} is not available on your plan.` };
         }
     }
   }

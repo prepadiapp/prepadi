@@ -36,6 +36,10 @@ model User {
   // --- SaaS Relations ---
   organizationId  String?
   organization    Organization? @relation("OrgMembers", fields: [organizationId], references: [id], onDelete: SetNull) 
+  
+  // NEW: Hierarchy within Org
+  orgRole         OrgRole       @default(MEMBER) 
+
   ownedOrganization Organization? @relation("OrgOwner")
   
   // A user (Student) can have a subscription directly
@@ -48,6 +52,12 @@ model User {
   quizAttempts    QuizAttempt[]
   orders          Order[]
   joinRequests    JoinRequest[]
+  
+  // NEW: Relation to ExamPapers created by this user
+  createdPapers   ExamPaper[]
+  
+  // NEW: Needed for Transaction relation
+  transactions    Transaction[]
 }
 
 model Account {
@@ -77,6 +87,10 @@ model VerificationToken {
 model Organization {
   id        String   @id @default(cuid())
   name      String
+  
+  // NEW: Optional slug for future use (made optional to support existing rows)
+  slug      String?  @unique
+
   ownerId   String   @unique
   owner     User     @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members   User[]   @relation("OrgMembers")
@@ -95,6 +109,10 @@ model Organization {
   // --- NEW: Relation to Subject & Exam ---
   subjects  Subject[] 
   exams     Exam[]    // Organizations can create their own exams
+  
+  // NEW: LMS Relations
+  examPapers    ExamPaper[]
+  assignments   Assignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -183,6 +201,12 @@ model Transaction {
   provider       String   
   providerRef    String   
   paymentDate    DateTime @default(now())
+  
+  // NEW: Back-relation to User (optional to fix migration error)
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id])
+  
+  updatedAt      DateTime @updatedAt @default(now()) // Added default for backfill
 }
 
 // --- 3. EXAM & CONTENT MODELS ---
@@ -200,6 +224,9 @@ model Exam {
   
   questions   Question[]
   quizAttempts QuizAttempt[]
+  
+  // NEW: Relation
+  examPapers  ExamPaper[]
 }
 
 model Subject {
@@ -214,6 +241,9 @@ model Subject {
 
   questions    Question[]
   quizAttempts QuizAttempt[]
+  
+  // NEW: Relation
+  examPapers   ExamPaper[]
 }
 
 model Question {
@@ -246,6 +276,14 @@ model Question {
   userAnswers UserAnswer[]
   tags        Tag[]     @relation("QuestionTags")
   type        QuestionType @default(OBJECTIVE)
+  
+  // NEW: LMS Fields
+  order          Int?         @default(0)
+  paperId        String?
+  paper          ExamPaper?   @relation(fields: [paperId], references: [id])
+  
+  updatedAt      DateTime     @updatedAt @default(now())
+  createdAt      DateTime     @default(now())
 }
 
 model Option {
@@ -270,7 +308,59 @@ model Section {
   questions   Question[]
 }
 
-// --- 4. PERFORMANCE MODELS ---
+// --- 4. LMS: NEW MODELS ---
+
+model ExamPaper {
+  id             String   @id @default(cuid())
+  title          String   
+  
+  // Metadata
+  examId         String
+  exam           Exam     @relation(fields: [examId], references: [id])
+  subjectId      String?
+  subject        Subject? @relation(fields: [subjectId], references: [id])
+  year           Int?
+  
+  // Visibility & Ownership
+  isVerified     Boolean  @default(false) 
+  isPublic       Boolean  @default(false)
+  
+  authorId       String
+  author         User     @relation(fields: [authorId], references: [id])
+  
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  questions      Question[]
+  assignments    Assignment[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Assignment {
+  id              String           @id @default(cuid())
+  
+  organizationId  String
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  
+  paperId         String
+  paper           ExamPaper        @relation(fields: [paperId], references: [id])
+  
+  // Scheduling
+  startTime       DateTime
+  endTime         DateTime
+  durationMinutes Int
+  
+  status          AssignmentStatus @default(ACTIVE)
+  
+  results         QuizAttempt[]
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+// --- 5. PERFORMANCE MODELS ---
 
 model QuizAttempt {
   id          String   @id @default(cuid())
@@ -288,6 +378,11 @@ model QuizAttempt {
   subject     Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   examId      String
   exam        Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  
+  // NEW: Link to Assignment
+  assignmentId String?
+  assignment   Assignment? @relation(fields: [assignmentId], references: [id])
+  
   userAnswers UserAnswer[]
 }
 
@@ -309,7 +404,7 @@ model UserAnswer {
   isCorrect         Boolean
 }
 
-// --- 5. ENUMS ---
+// --- 6. ENUMS ---
 
 enum UserRole {
   STUDENT
@@ -317,9 +412,22 @@ enum UserRole {
   ADMIN
 }
 
+// NEW
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
 enum QuestionType {
   OBJECTIVE
   THEORY
+}
+
+// NEW
+enum AssignmentStatus {
+  ACTIVE
+  ARCHIVED
 }
 
 enum PlanInterval {
