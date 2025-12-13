@@ -251,18 +251,14 @@ model Question {
   text        String    @db.Text
   explanation String?   @db.Text
   
-  // For AI Theory Grading
   markingGuide String?  @db.Text 
-  
-  // For AI Metadata (e.g. source image analysis)
   aiContext   Json?     
-  
   sourceApi   String?   
-  year        Int
+  year        Int?      // Changed from Int to Int? (nullable)
   imageUrl    String? 
   
-  subjectId   String
-  subject     Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subjectId   String?   // Also make nullable for consistency
+  subject     Subject?  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   examId      String
   exam        Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
   
@@ -277,7 +273,6 @@ model Question {
   tags        Tag[]     @relation("QuestionTags")
   type        QuestionType @default(OBJECTIVE)
   
-  // NEW: LMS Fields
   order          Int?         @default(0)
   paperId        String?
   paper          ExamPaper?   @relation(fields: [paperId], references: [id])

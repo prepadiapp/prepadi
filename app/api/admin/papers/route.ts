@@ -7,45 +7,39 @@ export async function GET(req: Request) {
   try {
     const session = await getAuthSession();
     
-    // 1. Auth Check
     if (!session?.user) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    // 2. Determine Filter Context
-    // We explicitly cast or check safely because TypeScript might lag behind module augmentation
     const userRole = session.user.role as UserRole;
-    const orgId = (session.user as any).organizationId; // Safe cast for immediate fix
+    // Safe cast for Org logic if needed locally, though main filter is role based
+    const orgId = (session.user as any).organizationId;
 
     const where: any = {};
 
     if (userRole === UserRole.ORGANIZATION && orgId) {
-       // Organization Admin: See own papers
+       // Org: See OWN papers
        where.organizationId = orgId;
     } else if (userRole === UserRole.ADMIN) {
-       // Super Admin: See ALL papers (or you can filter if needed)
-       // leaving 'where' empty fetches everything
+       // Admin: See ONLY Global (Admin-created) papers by default
+       // Filter out Organization papers to keep list clean
+       where.organizationId = null; 
     } else {
-       // Regular users/students shouldn't be hitting this admin route usually,
-       // but if they do, show public only? Or strict 403?
-       // Let's assume strict admin/org access for this route.
        return new NextResponse('Forbidden', { status: 403 });
     }
 
-    // 3. Fetch Papers
     const papers = await prisma.examPaper.findMany({
       where,
       include: {
         exam: true,
         subject: true,
-        questions: { select: { id: true } }, // Count questions efficiently
+        questions: { select: { id: true } }, 
         author: { select: { name: true, email: true } }
       },
       orderBy: { updatedAt: 'desc' },
-      take: 50 // Limit for performance
+      take: 50 
     });
 
-    // 4. Transform for Frontend (e.g. adding counts)
     const formattedPapers = papers.map(paper => ({
       ...paper,
       _count: { questions: paper.questions.length }
