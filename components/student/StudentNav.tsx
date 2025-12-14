@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, LineChart, BookOpen, User, Menu, CreditCard, Sparkles, Building2 } from 'lucide-react';
+import { Home, LineChart, BookOpen, User, Menu, CreditCard, Sparkles, Building2, CalendarCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 
 const navItems = [
   { href: '/dashboard', label: 'Home', icon: Home },
+  { href: '/dashboard/assessments', label: 'Assessments', icon: CalendarCheck }, // Added
   { href: '/dashboard/practice', label: 'Practice', icon: BookOpen },
   { href: '/dashboard/performance', label: 'Performance', icon: LineChart },
   { href: '/dashboard/profile', label: 'Profile', icon: User },

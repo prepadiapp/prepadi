@@ -37,6 +37,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "date-fns": "^4.1.0",
     "isomorphic-dompurify": "^2.33.0",
     "lucide-react": "^0.553.0",
     "mammoth": "^1.11.0",

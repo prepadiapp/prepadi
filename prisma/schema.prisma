@@ -334,25 +334,27 @@ model ExamPaper {
 }
 
 model Assignment {
-  id              String           @id @default(cuid())
+  id             String   @id @default(cuid())
   
-  organizationId  String
-  organization    Organization     @relation(fields: [organizationId], references: [id])
+  title          String   // Added Title
   
-  paperId         String
-  paper           ExamPaper        @relation(fields: [paperId], references: [id])
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  
+  paperId        String
+  paper          ExamPaper    @relation(fields: [paperId], references: [id])
   
   // Scheduling
-  startTime       DateTime
-  endTime         DateTime
-  durationMinutes Int
+  startTime      DateTime
+  endTime        DateTime
+  duration       Int?     // Renamed from durationMinutes, made optional
   
-  status          AssignmentStatus @default(ACTIVE)
+  status         AssignmentStatus @default(ACTIVE)
   
-  results         QuizAttempt[]
+  results        QuizAttempt[]
 
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 // --- 5. PERFORMANCE MODELS ---
@@ -379,6 +381,8 @@ model QuizAttempt {
   assignment   Assignment? @relation(fields: [assignmentId], references: [id])
   
   userAnswers UserAnswer[]
+
+  status       AttemptStatus @default(IN_PROGRESS)
 }
 
 model UserAnswer {
@@ -459,4 +463,9 @@ enum RequestStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  COMPLETED
 }
