@@ -2,7 +2,7 @@ import { Resend } from 'resend';
 
 // Store the client instance outside the function after it's been initialized
 let resendInstance: Resend | null = null;
-const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL;
 
 /**
  * Initializes the Resend client lazily. 
@@ -26,7 +26,7 @@ const getResendClient = (): Resend => {
 
 
 /**
- * Sends a password reset email.
+ * Sends a verification email.
  * @param email - The recipient's email address.
  * @param token - The unique verification token.
  */
@@ -34,7 +34,7 @@ export const sendVerificationEmail = async (email: string, token: string) => {
   // Use the lazy client initializer
   const resend = getResendClient();
   
-  const verificationLink = `${appUrl}/api/auth/verify/${token}`;
+  const verificationLink = `${appUrl}/verify-email?token=${token}`;
 
   try {
     const { data, error } = await resend.emails.send({
@@ -74,6 +74,54 @@ export const sendVerificationEmail = async (email: string, token: string) => {
   } catch (error) {
     console.error("Email sending exception:", error);
     return { error: "An unexpected error occurred." };
+  }
+};
+
+/**
+ * Sends a password reset email.
+ * @param email - The recipient's email address.
+ * @param token - The unique reset token.
+ */
+export const sendPasswordResetEmail = async (email: string, token: string) => {
+  const resend = getResendClient();
+  const resetLink = `${appUrl}/reset-password/${token}`;
+
+  try {
+    const { error } = await resend.emails.send({
+      from: 'Prepadi <onboarding@resend.dev>',
+      to: [email],
+      subject: 'Reset your Prepadi Password',
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+          <h2 style="color: #333;">Password Reset Request</h2>
+          <p>We received a request to reset your password. Click the button below to choose a new password:</p>
+          <a href="${resetLink}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 16px 0;">
+            Reset Password
+          </a>
+          <p>
+            This link will expire in 1 hour.
+          </p>
+          <p>
+            If you didn't request this, you can safely ignore this email.
+          </p>
+          <hr>
+          <p style="font-size: 0.9em; color: #777;">
+            Link not working? Copy and paste this URL:<br>
+            <a href="${resetLink}">${resetLink}</a>
+          </p>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error("Resend reset error:", error);
+      return { error: "Failed to send reset email." };
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error("Reset email exception:", error);
+    return { error: "Unexpected error sending email." };
   }
 };
 
