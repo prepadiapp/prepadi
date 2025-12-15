@@ -25,11 +25,11 @@ const sidebarLinks = [
     href: '/admin',
     icon: LayoutDashboard,
   },
-  {
-    title: 'Users',
-    href: '/admin/users',
-    icon: Users,
-  },
+  // {
+  //   title: 'Users',
+  //   href: '/admin/users',
+  //   icon: Users,
+  // },
   {
     title: 'Curriculum', // Renamed from Subjects & Exams
     href: '/admin/subjects',

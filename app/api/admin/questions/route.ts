@@ -6,98 +6,119 @@ import { generateTags } from '@/lib/ai';
 
 const PAGE_SIZE = 20;
 
-// GET: Fetch Questions (Filtered)
 export async function GET(request: Request) {
   const session = await getAuthSession();
   if (!session?.user || session.user.role !== UserRole.ADMIN) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
 
-  const { searchParams } = new URL(request.url);
-  const q = searchParams.get('q') || '';
-  const page = parseInt(searchParams.get('page') || '1');
-  const limit = 20;
-  const skip = (page - 1) * limit;
-
-  // Filters
-  const subjectId = searchParams.get('subjectId');
-  const examId = searchParams.get('examId');
-  const year = searchParams.get('year');
-  const tagId = searchParams.get('tagId');
-
-  const where: any = {
-      organizationId: null, // STRICTLY GLOBAL QUESTIONS ONLY
-  };
-
-  if (q) {
-    where.text = { contains: q, mode: 'insensitive' };
-  }
-  if (subjectId && subjectId !== 'all') where.subjectId = subjectId;
-  if (examId && examId !== 'all') where.examId = examId;
-  if (year) where.year = parseInt(year);
-  if (tagId && tagId !== 'all') {
-    where.tags = { some: { id: tagId } };
-  }
-
   try {
-    const [questions, total] = await Promise.all([
+    const { searchParams } = new URL(request.url);
+    const subjectId = searchParams.get('subjectId');
+    const examId = searchParams.get('examId');
+    const year = searchParams.get('year');
+    const q = searchParams.get('q');
+    const tagId = searchParams.get('tagId'); 
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || `${PAGE_SIZE}`);
+    const skip = (page - 1) * limit;
+
+    const where: any = { organizationId: null };
+
+    if (subjectId && subjectId !== 'all') where.subjectId = subjectId;
+    if (examId && examId !== 'all') where.examId = examId;
+    if (year) where.year = parseInt(year);
+    if (q) {
+      where.text = { contains: q, mode: 'insensitive' };
+    }
+    if (tagId && tagId !== 'all') {
+      where.tags = { some: { id: tagId } };
+    }
+
+    const [questions, totalCount] = await prisma.$transaction([
       prisma.question.findMany({
         where,
+        orderBy: { subject: { name: 'asc' } },
         include: {
           subject: { select: { name: true } },
           exam: { select: { shortName: true } },
           tags: { select: { name: true } },
-          options: true // Include options count
+          options: true
         },
-        orderBy: { createdAt: 'desc' },
-        skip,
+        skip: skip,
         take: limit,
       }),
       prisma.question.count({ where }),
     ]);
 
     return NextResponse.json({
-      questions: questions.map(q => ({
-        ...q,
-        tags: q.tags // Flatten tags if needed
-      })),
-      totalPages: Math.ceil(total / limit),
+      questions,
+      totalCount,
+      totalPages: Math.ceil(totalCount / limit),
       currentPage: page,
     });
+
   } catch (error) {
-    console.error(error);
-    return new NextResponse('Error fetching questions', { status: 500 });
+    console.error('[QUESTIONS_GET_API_ERROR]', error);
+    return new NextResponse('Internal Server Error', { status: 500 });
   }
 }
 
-
 export async function POST(request: Request) {
   const session = await getAuthSession();
-  if (!session?.user || session.user.role !== UserRole.ADMIN) {
+  if (!session?.user) return new NextResponse('Unauthorized', { status: 401 });
+
+  const isAdmin = session.user.role === UserRole.ADMIN;
+  const isOrg = session.user.role === UserRole.ORGANIZATION;
+
+  if (!isAdmin && !isOrg) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
 
   try {
     const body = await request.json();
     const {
-      text, explanation, year, subjectId, examId, options, tags, type, markingGuide
+      text, explanation, year, options, tags, type, markingGuide, paperId, sectionId, imageUrl
     } = body;
+    
+    // Mutable variables to hold resolved IDs
+    let { subjectId, examId } = body;
+
+    // Resolve Org Context
+    let orgId = null;
+    if (isOrg) {
+        orgId = (session.user as any).organizationId;
+        if (!orgId) {
+             const dbUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { organizationId: true } });
+             orgId = dbUser?.organizationId;
+        }
+        if (!orgId) {
+             const ownerOrg = await prisma.organization.findUnique({ where: { ownerId: session.user.id }, select: { id: true } });
+             orgId = ownerOrg?.id;
+        }
+    }
+
+    // --- FIX: Auto-fill context from Paper BEFORE validation ---
+    if (paperId) {
+        const paper = await prisma.examPaper.findUnique({ where: { id: paperId } });
+        if (paper) {
+            if (!subjectId) subjectId = paper.subjectId;
+            if (!examId) examId = paper.examId;
+        }
+    }
+    // ---------------------------------------------------------
 
     // 1. Common Validation
-    if (!text || !year || !subjectId || !examId) {
-      return new NextResponse('Missing required fields', { status: 400 });
+    if (!text || !subjectId || !examId) {
+      return new NextResponse('Missing required fields (text, subjectId, examId)', { status: 400 });
     }
 
     // 2. Type-Specific Validation
     const qType = (type as QuestionType) || QuestionType.OBJECTIVE;
 
-    if (qType === QuestionType.OBJECTIVE) {
-        if (!options || options.length < 2) {
+    if (qType === QuestionType.OBJECTIVE && options) {
+        if (options.length < 2) {
             return new NextResponse('Objective questions must have at least 2 options', { status: 400 });
-        }
-        const correctOptions = options.filter((opt: any) => opt.isCorrect).length;
-        if (correctOptions !== 1) {
-            return new NextResponse('There must be exactly one correct answer', { status: 400 });
         }
     }
 
@@ -106,14 +127,12 @@ export async function POST(request: Request) {
     
     if (tagNames.length === 0) {
         try {
-            // Fetch subject name for context
             const subject = await prisma.subject.findUnique({
                 where: { id: subjectId },
                 select: { name: true }
             });
             
             if (subject) {
-                console.log(`[AI] Generating tags for: ${text.substring(0, 30)}...`);
                 const aiTags = await generateTags(text, subject.name);
                 if (aiTags && aiTags.length > 0) {
                     tagNames = aiTags;
@@ -121,7 +140,6 @@ export async function POST(request: Request) {
             }
         } catch (aiError) {
             console.warn("Auto-tag generation failed:", aiError);
-            // Continue without tags if AI fails
         }
     }
 
@@ -154,10 +172,14 @@ export async function POST(request: Request) {
       data: {
         text,
         explanation,
-        year: parseInt(year),
+        // Make year optional, default to current if not provided
+        year: year ? parseInt(year) : new Date().getFullYear(),
         subjectId,
         examId,
-        organizationId: null,
+        paperId, 
+        sectionId,
+        imageUrl,
+        organizationId: orgId, // Set for Org, null for Admin
         type: qType,
         markingGuide: qType === QuestionType.THEORY ? markingGuide : null,
         options: qType === QuestionType.OBJECTIVE ? {
@@ -172,6 +194,7 @@ export async function POST(request: Request) {
           connect: tagIdsToConnect,
         },
       },
+      include: { options: true }
     });
 
     return NextResponse.json(newQuestion);
