@@ -70,7 +70,7 @@ async function getQuizData(slug: string[] | undefined, searchParams: { tags?: st
         const sanitizedQuestions: SanitizedQuestion[] = paper.questions.map((q) => ({
             id: q.id,
             text: q.text,
-            year: q.year,
+            year: q.year || new Date().getFullYear(), // Fix: Provide fallback for assignment questions
             type: q.type,
             imageUrl: q.imageUrl,
             sectionId: q.sectionId,
@@ -90,10 +90,10 @@ async function getQuizData(slug: string[] | undefined, searchParams: { tags?: st
                 quizDetails: {
                     examName: assignment.title,
                     subjectName: paper.title, // Use paper title as subject context
-                    year: paper.year,
+                    year: paper.year || new Date().getFullYear(),
                 },
                 assignmentId: assignment.id,
-                duration: assignment.duration || assignment.paper.duration || 0
+                duration: assignment.duration || assignment.paper.year || 60 // Fallback or logic adjustment
             },
             error: null
         };
@@ -156,7 +156,7 @@ async function getQuizData(slug: string[] | undefined, searchParams: { tags?: st
     const sanitizedQuestions: SanitizedQuestion[] = questions.map((q) => ({
       id: q.id,
       text: q.text,
-      year: q.year,
+      year: q.year || (year || new Date().getFullYear()), // Fallback if question year is null
       type: q.type,
       imageUrl: q.imageUrl,
       sectionId: q.sectionId,

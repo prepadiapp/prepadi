@@ -108,8 +108,16 @@ class QuestionService {
     const adapterYearsResult = this.fetchAvailableYearsFromAdapters(examId, subjectId);
     const [localYearsResult, adapterYears] = await Promise.all([localYearsQuery, adapterYearsResult]);
     
-    const localYears = localYearsResult.map(q => q.year);
-    const combined = Array.from(new Set([...localYears, ...adapterYears])).sort((a, b) => b - a);
+    const localYears = localYearsResult
+        .map(q => q.year)
+        .filter((y): y is number => y !== null); // Filter out nulls
+
+    // Sort descending, handling any potential undefined/null safely
+    const combined = Array.from(new Set([...localYears, ...adapterYears])).sort((a, b) => {
+        const valA = a ?? 0;
+        const valB = b ?? 0;
+        return valB - valA;
+    });
     
     return combined;
   }
@@ -214,7 +222,7 @@ class QuestionService {
                     },
                     tags: { connect: tagConnects }
                 },
-                include: { options: true, section: true },
+                include: { options: true, section: true, tags: true },
             });
             createdQuestions.push(newQ);
         }

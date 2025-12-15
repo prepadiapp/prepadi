@@ -1,83 +1,84 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { questionService } from '@/lib/question-service/question-service';
-import { Question, Option, Section } from '@prisma/client';
 import { NextResponse } from 'next/server';
-
-type SanitizedOption = Omit<Option, 'isCorrect' | 'questionId' | 'userAnswers'>;
-
-type QuestionWithRelations = Question & {
-    options: Option[];
-    section: Section | null; 
-};
-
-type SanitizedQuestion = {
-  id: string;
-  text: string;
-  year: number;
-  type: string; 
-  imageUrl: string | null;
-  sectionId: string | null;
-  section?: { instruction: string; passage: string | null } | null;
-  options: SanitizedOption[];
-};
 
 export async function POST(request: Request) {
   try {
     const session = await getAuthSession();
-    if (!session?.user?.id) {
+    if (!session?.user) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
     const body = await request.json();
-    const { examId, subjectId, year, tags, limit } = body;
+    const { mode, examId, subjectId, year } = body;
 
-    if (!examId) {
-      return new NextResponse('Missing examId', { status: 400 });
-    }
+    // Build the query filter
+    const where: any = {};
 
-    // Call service with flexible params
-    const fullQuestions = (await questionService.getQuestions({
-        examId,
-        subjectId: subjectId === 'all' ? undefined : subjectId,
-        year: year === 'random' ? undefined : Number(year),
-        tags: tags ? tags.split(',') : undefined,
-        limit: limit ? Number(limit) : undefined
-    })) as QuestionWithRelations[];
-
-    if (fullQuestions.length === 0) {
-      return new NextResponse('No questions found for this selection.', {
-        status: 404,
-      });
-    }
-
-    const sanitizedQuestions: SanitizedQuestion[] = fullQuestions.map((q) => {
-      const sanitizedQuestion: SanitizedQuestion = {
-        id: q.id,
-        text: q.text,
-        year: q.year,
-        type: q.type,           
-        imageUrl: q.imageUrl,   
-        sectionId: q.sectionId, 
+    if (examId) where.examId = examId;
+    
+    // Handle subject filtering (slug vs ID)
+    if (subjectId) {
+        // Check if it's a slug or ID
+        const subject = await prisma.subject.findFirst({
+            where: {
+                OR: [
+                    { id: subjectId },
+                    { name: { equals: subjectId, mode: 'insensitive' } } // Fallback for name matching
+                ]
+            }
+        });
         
-        section: q.section ? {
-          instruction: q.section.instruction,
-          passage: q.section.passage,
-        } : null,
+        if (subject) {
+             where.subjectId = subject.id;
+        }
+    }
 
-        options: q.options.map((opt: Option) => ({
-          id: opt.id,
-          text: opt.text,
-        })),
-      };
-      
-      return sanitizedQuestion;
+    if (year) where.year = parseInt(year);
+
+    // Fetch questions
+    const questions = await prisma.question.findMany({
+      where,
+      take: 20, // Limit for practice mode
+      include: {
+        options: {
+          select: {
+            id: true,
+            text: true,
+          },
+        },
+        section: true,
+      },
+      orderBy: {
+        createdAt: 'desc', // Randomize later if needed
+      }
     });
 
-    return NextResponse.json(sanitizedQuestions);
-    
+    if (questions.length === 0) {
+        return new NextResponse("No questions found matching criteria", { status: 404 });
+    }
+
+    // Transform for frontend
+    const sanitizedQuestions = questions.map((q) => ({
+      id: q.id,
+      text: q.text,
+      year: q.year || new Date().getFullYear(), // Fix: Fallback for nullable year
+      type: q.type,          
+      imageUrl: q.imageUrl,   
+      sectionId: q.sectionId,
+      section: q.section ? {
+        instruction: q.section.instruction,
+        passage: q.section.passage
+      } : undefined,
+      options: q.options.map((opt) => ({
+        id: opt.id,
+        text: opt.text,
+      })),
+    }));
+
+    return NextResponse.json({ questions: sanitizedQuestions });
   } catch (error) {
-    console.error('[QUIZ_START_API_ERROR]', error);
+    console.error('[QUIZ_START_ERROR]', error);
     return new NextResponse('Internal Server Error', { status: 500 });
   }
 }

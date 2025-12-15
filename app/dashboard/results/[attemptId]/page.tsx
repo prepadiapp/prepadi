@@ -7,7 +7,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, CheckCircle2, Clock, XCircle, Home, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
 import { QuizReview } from '@/components/QuizReview'; 
-import { StudentNav } from '@/components/student/StudentNav';
 
 // --- Helper Component: Visual Score Card ---
 function ResultSummary({ score, correct, total, timeFormatted }: { score: number, correct: number, total: number, timeFormatted: string }) {
@@ -158,8 +157,7 @@ export default async function ResultsPage({ params }: { params: Promise<{ attemp
 
   return (
     <div className="min-h-screen bg-slate-50/50 pb-20 md:pb-0">
-      <StudentNav isPro={isPro} />
-      <main className="md:pl-64 min-h-[calc(100vh-4rem)] md:min-h-screen transition-all">
+      <main className=" transition-all">
         <div className="p-4 md:p-8 max-w-5xl mx-auto">
             
             {/* Header & Actions */}

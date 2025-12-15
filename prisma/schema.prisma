@@ -394,13 +394,17 @@ model UserAnswer {
   
   // For Objective
   selectedOptionId  String?
-  option            Option?     @relation(fields: [selectedOptionId], references: [id], onDelete: Cascade)
+  option            Option?   @relation(fields: [selectedOptionId], references: [id], onDelete: Cascade)
   
   // For Theory
-  textAnswer        String?     @db.Text
-  aiFeedback        String?     @db.Text
+  textAnswer        String?   @db.Text
+  aiFeedback        String?   @db.Text
 
-  isCorrect         Boolean
+  // UPDATED: Make nullable to support "Ungraded" state, add granular score
+  isCorrect         Boolean?  
+  score             Int?      // 0-100 score for this specific answer
+
+  @@index([quizAttemptId])
 }
 
 // --- 6. ENUMS ---

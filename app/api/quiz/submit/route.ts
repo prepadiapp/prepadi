@@ -1,12 +1,14 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
-import { Exam, Subject } from '@prisma/client';
+import { AttemptStatus } from '@prisma/client';
 
 interface SubmitQuizBody {
-  answers: [string, string][]; // An array of [questionId, optionId]
+  answers: [string, string][]; // An array of [questionId, value]. Value is OptionID (Obj) or Text (Theory)
   questionIds: string[];
   timeTaken: number;
+  assignmentId?: string;
+  paperId?: string; // Optional paper context
 }
 
 export async function POST(request: Request) {
@@ -17,10 +19,10 @@ export async function POST(request: Request) {
     }
 
     const body: SubmitQuizBody = await request.json();
-    const { answers: clientAnswers, questionIds, timeTaken } = body;
+    const { answers: clientAnswers, questionIds, timeTaken, assignmentId } = body;
     const answersMap = new Map(clientAnswers);
 
-    // 1. Fetch the "grading key"
+    // 1. Fetch questions to grade/store
     const questions = await prisma.question.findMany({
       where: { id: { in: questionIds } },
       include: {
@@ -34,55 +36,77 @@ export async function POST(request: Request) {
       return new NextResponse('Invalid questions', { status: 400 });
     }
 
-    // 2. Grade the quiz and prepare the data for the new table
+    // 2. Process Answers
     let correctCount = 0;
-    const userAnswersData = []; // This will hold data for the UserAnswer model
+    let totalScoreAccumulator = 0;
+    let hasTheory = false;
+    const userAnswersData = [];
 
     for (const question of questions) {
-      const correctOption = question.options.find((opt) => opt.isCorrect);
-      const userAnswerId = answersMap.get(question.id);
-      let isAnswerCorrect = false;
+      const answerValue = answersMap.get(question.id);
 
-      if (correctOption && userAnswerId === correctOption.id) {
-        correctCount++;
-        isAnswerCorrect = true;
+      if (question.type === 'THEORY') {
+        hasTheory = true;
+        // For theory, we store the text but leave isCorrect/score NULL for now
+        // The grade-attempt API will handle this later
+        userAnswersData.push({
+            questionId: question.id,
+            textAnswer: answerValue || '',
+            isCorrect: null, 
+            score: null
+        });
+      } else {
+        // OBJECTIVE
+        const correctOption = question.options.find((opt) => opt.isCorrect);
+        const isCorrect = correctOption && answerValue === correctOption.id;
+        
+        if (isCorrect) {
+            correctCount++;
+            totalScoreAccumulator += 100; // 100 points for correct objective
+        }
+
+        userAnswersData.push({
+          questionId: question.id,
+          selectedOptionId: answerValue || null,
+          isCorrect: isCorrect || false,
+          score: isCorrect ? 100 : 0
+        });
       }
-      
-      userAnswersData.push({
-        questionId: question.id,
-        selectedOptionId: userAnswerId || null,
-        isCorrect: isAnswerCorrect,
-      });
     }
 
-    const score = Math.round((correctCount / questions.length) * 100);
-    const { examId, subjectId, year } = questions[0];
+    // 3. Determine Initial State
+    const initialScore = Math.round((totalScoreAccumulator / questions.length));
+    const status = hasTheory ? AttemptStatus.IN_PROGRESS : AttemptStatus.COMPLETED;
 
-    // 3. Use a transaction to save everything at once
+    const { examId, subjectId, year } = questions[0];
+    
+    // Safety check: Subject ID is required for Attempt, but optional on Question.
+    // If Question has no subject, we must fail or fallback (depending on your logic).
+    // Assuming here we fallback to a known default or throw error if data is inconsistent.
+    if (!subjectId) {
+        return new NextResponse('Question data error: Missing Subject ID', { status: 400 });
+    }
+
+    // 4. Save Attempt
     const newAttempt = await prisma.quizAttempt.create({
       data: {
-        score,
+        score: initialScore,
         correct: correctCount,
         total: questions.length,
         timeTaken,
-        year,
+        year: year || new Date().getFullYear(),
         userId: session.user.id,
-        examId: examId,
-        subjectId: subjectId,
-        // This is the magic: create all UserAnswer records
-        // and link them to this new attempt
+        examId,
+        subjectId: subjectId, // Now guaranteed to be string
+        assignmentId,
+        status,
         userAnswers: {
-          create: userAnswersData.map(answer => ({
-            questionId: answer.questionId,
-            selectedOptionId: answer.selectedOptionId,
-            isCorrect: answer.isCorrect,
-          })),
+          create: userAnswersData,
         },
       },
     });
 
-    // 4. Return the new attempt ID
-    return NextResponse.json({ attemptId: newAttempt.id });
+    return NextResponse.json({ attemptId: newAttempt.id, status });
 
   } catch (error) {
     console.error('[QUIZ_SUBMIT_API_ERROR]', error);

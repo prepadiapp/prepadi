@@ -165,7 +165,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
 
           if (!response.ok) throw new Error('Failed to submit');
           const result = await response.json();
-          router.push(`dashboard/results/${result.attemptId}`);
+          router.push(`/dashboard/results/${result.attemptId}`);
         } catch (error: any) {
           setSubmitError(error.message);
           setLocalIsSubmitting(false);

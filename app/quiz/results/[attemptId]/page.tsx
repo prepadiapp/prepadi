@@ -8,9 +8,10 @@ import { AlertCircle, CheckCircle2, Clock, XCircle, Home, RotateCcw } from 'luci
 import Link from 'next/link';
 import { QuizReview } from '@/components/QuizReview'; 
 import { StudentNav } from '@/components/student/StudentNav';
+import GradingTrigger from '@/components/GradingTrigger';
 
 // --- Helper Component: Visual Score Card ---
-function ResultSummary({ score, correct, total, timeFormatted }: { score: number, correct: number, total: number, timeFormatted: string }) {
+function ResultSummary({ score, correct, total, timeFormatted, status }: { score: number, correct: number, total: number, timeFormatted: string, status: string }) {
   const isPass = score >= 50;
   
   // Simple CSS-based conic gradient for the ring
@@ -36,7 +37,7 @@ function ResultSummary({ score, correct, total, timeFormatted }: { score: number
                 </div>
             </div>
             <h2 className="text-3xl font-bold text-slate-900 mb-2">
-                {isPass ? "Excellent Work!" : "Keep Practicing!"}
+                {status === 'IN_PROGRESS' ? "Grading Pending..." : (isPass ? "Excellent Work!" : "Keep Practicing!")}
             </h2>
             <p className="text-slate-500 max-w-xs mx-auto">
                 You answered <span className="font-medium text-slate-900">{correct}</span> out of <span className="font-medium text-slate-900">{total}</span> questions correctly.
@@ -98,11 +99,12 @@ export default async function ResultsPage({ params }: { params: Promise<{ attemp
   }
 
   // 1. Fetch Quiz Attempt
-  const attemptQuery = prisma.quizAttempt.findUnique({
+  const attempt = await prisma.quizAttempt.findUnique({
     where: { id: attemptId, userId: session.user.id },
     include: {
       exam: true,
       subject: true,
+      assignment: true,
       userAnswers: {
         orderBy: { question: { id: 'asc' } },
         include: {
@@ -114,7 +116,7 @@ export default async function ResultsPage({ params }: { params: Promise<{ attemp
   });
 
   // 2. Fetch User Subscription Status (For StudentNav)
-  const userQuery = prisma.user.findUnique({
+  const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: { 
         subscription: { include: { plan: true } },
@@ -122,16 +124,12 @@ export default async function ResultsPage({ params }: { params: Promise<{ attemp
     }
   });
 
-  // Run in parallel
-  const [attempt, user] = await prisma.$transaction([attemptQuery, userQuery]);
-
   // Calculate isPro status
   let activeSub = null;
   if (user?.subscription?.isActive) activeSub = user.subscription;
   else if (user?.ownedOrganization?.subscription?.isActive) activeSub = user.ownedOrganization.subscription;
   
   const isPro = (activeSub?.plan?.price || 0) > 0;
-
 
   if (!attempt) {
     return (
@@ -154,7 +152,10 @@ export default async function ResultsPage({ params }: { params: Promise<{ attemp
   const seconds = attempt.timeTaken % 60;
   const timeFormatted = `${minutes}m ${seconds}s`;
 
-  const retryLink = `/quiz/${attempt.exam.shortName.toLowerCase()}/${attempt.subject.name.toLowerCase().replace(/\s+/g, '-')}/${attempt.year}`;
+  // Determine retry link (back to assignment list if assignment, else specific practice link)
+  const retryLink = attempt.assignment 
+    ? `/dashboard/assessments` 
+    : `/quiz/${attempt.exam.shortName.toLowerCase()}/${attempt.subject.name.toLowerCase().replace(/\s+/g, '-')}/${attempt.year}`;
 
   return (
     <div className="min-h-screen bg-slate-50/50 pb-20 md:pb-0">
@@ -162,6 +163,11 @@ export default async function ResultsPage({ params }: { params: Promise<{ attemp
       <main className="md:pl-64 min-h-[calc(100vh-4rem)] md:min-h-screen transition-all">
         <div className="p-4 md:p-8 max-w-5xl mx-auto">
             
+            {/* AI Grading Trigger: If status is IN_PROGRESS, this component will call the grade API */}
+            {attempt.status === 'IN_PROGRESS' && (
+                <GradingTrigger attemptId={attempt.id} />
+            )}
+
             {/* Header & Actions */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                 <div>
@@ -178,7 +184,7 @@ export default async function ResultsPage({ params }: { params: Promise<{ attemp
                     </Button>
                     <Button asChild>
                         <Link href={retryLink}>
-                            <RotateCcw className="w-4 h-4 mr-2" /> Retry Quiz
+                            <RotateCcw className="w-4 h-4 mr-2" /> {attempt.assignment ? "Assessments" : "Retry Quiz"}
                         </Link>
                     </Button>
                 </div>
@@ -189,7 +195,8 @@ export default async function ResultsPage({ params }: { params: Promise<{ attemp
                 score={attempt.score} 
                 correct={attempt.correct} 
                 total={attempt.total} 
-                timeFormatted={timeFormatted} 
+                timeFormatted={timeFormatted}
+                status={attempt.status}
             />
 
             {/* Review Section */}
