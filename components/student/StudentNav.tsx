@@ -10,9 +10,9 @@ import { SignOutButton } from '@/components/SignOutButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
-const navItems = [
+const baseNavItems = [
   { href: '/dashboard', label: 'Home', icon: Home },
-  { href: '/dashboard/assessments', label: 'Assessments', icon: CalendarCheck }, // Added
+  // Assessments is now conditional
   { href: '/dashboard/practice', label: 'Practice', icon: BookOpen },
   { href: '/dashboard/performance', label: 'Performance', icon: LineChart },
   { href: '/dashboard/profile', label: 'Profile', icon: User },
@@ -26,6 +26,16 @@ interface StudentNavProps {
 
 export function StudentNav({ isPro, isOrgMember, orgName }: StudentNavProps) {
   const pathname = usePathname();
+
+  // Conditionally build nav items
+  const navItems = [
+    ...baseNavItems,
+  ];
+
+  // Insert Assessments after Home if user is Org Member
+  if (isOrgMember) {
+      navItems.splice(1, 0, { href: '/dashboard/assessments', label: 'Assessments', icon: CalendarCheck });
+  }
 
   // Desktop Sidebar
   const Sidebar = () => (
