@@ -23,13 +23,15 @@ import {
   X,
   ImageIcon,
   Loader2,
-  Check
+  Check,
+  AlignLeft
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface QuestionWithOptions extends Question {
   options: Option[];
+  section?: { instruction: string } | null; // Include section relation
 }
 
 interface Props {
@@ -37,9 +39,16 @@ interface Props {
   index: number;
   onDelete: (id: string) => void;
   onUpdate: (updated: QuestionWithOptions) => void;
+  apiPrefix?: string; 
 }
 
-export function QuestionAccordionItem({ question, index, onDelete, onUpdate }: Props) {
+export function QuestionAccordionItem({ 
+  question, 
+  index, 
+  onDelete, 
+  onUpdate, 
+  apiPrefix = '/api/admin' 
+}: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
@@ -48,13 +57,14 @@ export function QuestionAccordionItem({ question, index, onDelete, onUpdate }: P
     explanation: question.explanation || '',
     imageUrl: question.imageUrl || '',
     options: question.options || [],
+    section: question.section?.instruction || '', // NEW: Section text
   });
 
   const handleSave = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsSaving(true);
     try {
-      const res = await fetch(`/api/admin/questions/${question.id}`, {
+      const res = await fetch(`${apiPrefix}/questions/${question.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -62,6 +72,7 @@ export function QuestionAccordionItem({ question, index, onDelete, onUpdate }: P
           explanation: formData.explanation,
           imageUrl: formData.imageUrl,
           options: formData.options,
+          section: formData.section, // Send section text
         }),
       });
 
@@ -114,7 +125,6 @@ export function QuestionAccordionItem({ question, index, onDelete, onUpdate }: P
             
             {/* --- HEADER --- */}
             <div className="flex items-start p-2.5 md:p-3 gap-2 md:gap-3">
-              {/* Drag Handle - Larger touch target on mobile */}
               <div 
                 {...provided.dragHandleProps} 
                 className="mt-0.5 md:mt-1 cursor-grab hover:text-primary active:cursor-grabbing text-slate-300 p-1.5 md:p-1 hover:bg-slate-50 rounded touch-none"
@@ -122,7 +132,6 @@ export function QuestionAccordionItem({ question, index, onDelete, onUpdate }: P
                 <GripVertical className="w-5 h-5" />
               </div>
 
-              {/* Main Summary */}
               <CollapsibleTrigger asChild>
                 <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2 cursor-pointer select-none min-w-0">
                   <div className="flex-1 min-w-0">
@@ -133,15 +142,18 @@ export function QuestionAccordionItem({ question, index, onDelete, onUpdate }: P
                       <Badge variant={question.type === 'THEORY' ? 'secondary' : 'outline'} className="text-[9px] md:text-[10px] h-4 md:h-5 px-1.5 font-medium border-slate-200 text-slate-500">
                         {question.type}
                       </Badge>
+                      {/* Section Badge */}
+                      {formData.section && (
+                          <Badge variant="secondary" className="text-[9px] md:text-[10px] h-4 md:h-5 px-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-100 truncate max-w-[100px]">
+                             Section
+                          </Badge>
+                      )}
                     </div>
                     
-                    {/* HTML Preview with truncation */}
                     <div className="text-xs md:text-sm font-medium text-slate-700 truncate pr-2 md:pr-4 opacity-90 group-hover:opacity-100 transition-opacity">
                       <span dangerouslySetInnerHTML={{ __html: formData.text.replace(/<[^>]+>/g, '') || 'Empty Question Text...' }} />
                     </div>
                   </div>
-                  
-                  {/* Icon State */}
                   <div className="flex items-center justify-end">
                     {isOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
                   </div>
@@ -153,6 +165,19 @@ export function QuestionAccordionItem({ question, index, onDelete, onUpdate }: P
             <CollapsibleContent className="border-t border-slate-100 bg-slate-50/30">
               <div className="p-3 md:p-5 space-y-4">
                 
+                {/* NEW: Section / Instruction Field */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                     <AlignLeft className="w-3.5 h-3.5" /> Section / Instruction (Optional)
+                  </Label>
+                  <Textarea 
+                    value={formData.section}
+                    onChange={(e) => setFormData({...formData, section: e.target.value})}
+                    className="bg-white min-h-[50px] text-xs md:text-sm border-slate-200"
+                    placeholder="e.g. Read the passage below and answer questions 1-5..."
+                  />
+                </div>
+
                 {/* Text Editor */}
                 <div className="space-y-1">
                   <Label className="text-[10px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider">Question Content</Label>
@@ -178,7 +203,6 @@ export function QuestionAccordionItem({ question, index, onDelete, onUpdate }: P
                    </div>
                 </div>
 
-                {/* Options (Objective Only) */}
                 {question.type === 'OBJECTIVE' && (
                   <div className="space-y-2 md:space-y-3 bg-white border border-slate-200 p-3 md:p-4 rounded-lg">
                     <div className="flex justify-between items-center mb-1">
@@ -187,7 +211,6 @@ export function QuestionAccordionItem({ question, index, onDelete, onUpdate }: P
                         <Plus className="w-3 h-3 mr-1" /> Add
                       </Button>
                     </div>
-                    
                     <div className="space-y-2">
                       {formData.options.map((opt, i) => (
                         <div key={i} className="flex items-center gap-2 group/opt">
@@ -204,7 +227,6 @@ export function QuestionAccordionItem({ question, index, onDelete, onUpdate }: P
                               />
                               <Check className="w-2.5 h-2.5 md:w-3 md:h-3 text-white absolute pointer-events-none opacity-0 peer-checked:opacity-100" />
                            </div>
-                           
                            <Input 
                               value={opt.text}
                               onChange={(e) => updateOption(i, 'text', e.target.value)}
@@ -214,7 +236,6 @@ export function QuestionAccordionItem({ question, index, onDelete, onUpdate }: P
                               )}
                               placeholder={`Option ${String.fromCharCode(65 + i)}`}
                            />
-                           
                            <Button 
                              type="button" 
                              variant="ghost" 
@@ -230,7 +251,6 @@ export function QuestionAccordionItem({ question, index, onDelete, onUpdate }: P
                   </div>
                 )}
 
-                {/* Explanation */}
                 <div className="space-y-1">
                   <Label className="text-[10px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider">Explanation</Label>
                   <Textarea 
@@ -241,7 +261,6 @@ export function QuestionAccordionItem({ question, index, onDelete, onUpdate }: P
                   />
                 </div>
 
-                {/* Footer Actions */}
                 <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 mt-2">
                    <Button 
                      variant="ghost" 

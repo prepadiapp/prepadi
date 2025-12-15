@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Question" ALTER COLUMN "subjectId" DROP NOT NULL,
+ALTER COLUMN "year" DROP NOT NULL;

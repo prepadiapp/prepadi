@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useQuizStore, SanitizedQuestion, QuizMode } from '@/stores/quizStore';
 import { useTimer } from 'react-timer-hook';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import {
   Card, CardContent, CardFooter, CardHeader, CardTitle,
 } from '@/components/ui/card';
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,12 +16,13 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import {
-  ChevronLeft, ChevronRight, Flag, Loader2, Lock, Timer, AlertCircle, Menu, BookOpen, Sparkles, Check, X
+  ChevronLeft, ChevronRight, Flag, Loader2, Timer, AlertCircle, Menu, BookOpen, Sparkles, Check, X
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import DOMPurify from 'isomorphic-dompurify'; 
+import { toast } from 'sonner';
 
 interface QuizClientProps {
   initialQuestions: SanitizedQuestion[];
@@ -31,24 +32,26 @@ interface QuizClientProps {
     year: number;
   };
   mode: QuizMode;
+  initialDuration: number; 
+  assignmentId?: string; 
+  userId: string; 
 }
 
-// --- Helper: Countdown Timer Component ---
-function QuizTimer({ expiryTimestamp }: { expiryTimestamp: Date }) {
+function QuizTimer({ expiryTimestamp, onExpire }: { expiryTimestamp: Date; onExpire: () => void }) {
   const { seconds, minutes, hours } = useTimer({ 
     expiryTimestamp, 
-    onExpire: () => {
-      useQuizStore.getState().finishQuiz(); 
-    }
+    onExpire
   });
 
   const fHours = String(hours).padStart(2, '0');
   const fMinutes = String(minutes).padStart(2, '0');
   const fSeconds = String(seconds).padStart(2, '0');
   
-  const totalTime = useQuizStore.getState().timeLimitMinutes * 60;
-  const timeRemaining = (hours * 3600) + (minutes * 60) + seconds;
-  const progress = (timeRemaining / totalTime) * 100;
+  const { timeLimitMinutes } = useQuizStore(); 
+  const totalSeconds = timeLimitMinutes * 60;
+  const remainingSeconds = (hours * 3600) + (minutes * 60) + seconds;
+  const progress = totalSeconds > 0 ? ((totalSeconds - remainingSeconds) / totalSeconds) * 100 : 0;
+  
   const timerColor = minutes < 5 && hours === 0 ? 'text-red-500' : 'text-primary';
 
   return (
@@ -62,7 +65,6 @@ function QuizTimer({ expiryTimestamp }: { expiryTimestamp: Date }) {
   );
 }
 
-// --- Helper: Safe HTML Renderer ---
 function SafeHTML({ html, className }: { html: string; className?: string }) {
   const sanitizedHtml = DOMPurify.sanitize(html);
   return (
@@ -73,34 +75,37 @@ function SafeHTML({ html, className }: { html: string; className?: string }) {
   );
 }
 
-export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientProps) {
+export function QuizClient({ initialQuestions, quizDetails, mode, initialDuration, assignmentId, userId }: QuizClientProps) {
   const router = useRouter();
   const {
     status, questions, currentIndex, answers, startTime, timeLimitMinutes,
-    startQuiz, selectAnswer, goToQuestion, nextQuestion, prevQuestion, finishQuiz, resetQuiz,
+    startQuiz, selectAnswer, goToQuestion, nextQuestion, prevQuestion, finishQuiz, resetQuiz, 
+    // Removed setIsSubmitting as it's not exported
   } = useQuizStore();
 
   const [isMounted, setIsMounted] = useState(false);
-  const [expiryTimestamp, setExpiryTimestamp] = useState(new Date());
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [expiryTimestamp, setExpiryTimestamp] = useState<Date | null>(null);
+  const [isSubmitting, setLocalIsSubmitting] = useState(false); 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitDialogOpen, setIsSubmitDialogOpen] = useState(false);
   
-  // --- Theory Grading State ---
   const [theoryText, setTheoryText] = useState('');
   const [aiGrading, setAiGrading] = useState<any>(null);
   const [gradingLoading, setGradingLoading] = useState(false);
 
   useEffect(() => {
+    const duration = initialDuration || 60; 
     startQuiz(initialQuestions, mode);
+    useQuizStore.setState({ timeLimitMinutes: duration });
+
     const quizStartTime = new Date();
-    const expiry = new Date(quizStartTime.getTime() + timeLimitMinutes * 60 * 1000);
+    const expiry = new Date(quizStartTime.getTime() + duration * 60 * 1000);
     setExpiryTimestamp(expiry);
+    
     setIsMounted(true);
     return () => resetQuiz(); 
-  }, [initialQuestions, startQuiz, resetQuiz, timeLimitMinutes, mode]);
+  }, [initialQuestions, startQuiz, resetQuiz, mode, initialDuration]);
 
-  // Sync text input when question changes
   useEffect(() => {
     if (questions[currentIndex]) {
        setTheoryText(answers.get(questions[currentIndex].id) || '');
@@ -110,37 +115,10 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
 
   useEffect(() => {
     if (status === 'finished' && !isSubmitting) {
-      const submit = async () => {
-        setIsSubmitting(true);
-        setSubmitError(null);
-        try {
-          const timeTaken = startTime ? Math.round((new Date().getTime() - startTime.getTime()) / 1000) : 0;
-          const questionIds = questions.map(q => q.id);
-          const answersArray = Array.from(answers.entries());
-
-          const response = await fetch('/api/quiz/submit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              answers: answersArray,
-              questionIds: questionIds,
-              timeTaken: timeTaken,
-            }),
-          });
-
-          if (!response.ok) throw new Error('Failed to submit quiz.');
-          const result = await response.json();
-          router.push(`/quiz/results/${result.attemptId}`);
-        } catch (error: any) {
-          setSubmitError(error.message || 'An error occurred while submitting.');
-          setIsSubmitting(false);
-        }
-      };
-      submit();
+      handleSubmit();
     }
-  }, [status, isSubmitting, answers, questions, startTime, router]);
+  }, [status]); 
 
-  // --- Handlers ---
   const handleTheoryChange = (val: string) => {
       setTheoryText(val);
       selectAnswer(questions[currentIndex].id, val);
@@ -162,27 +140,38 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
       finally { setGradingLoading(false); }
   };
   
-  const handleSubmit = async () => {
-        setIsSubmitting(true);
+  const handleSubmit = useCallback(async () => {
+        if (isSubmitting) return;
+        setLocalIsSubmitting(true);
+        // setIsSubmitting(true); // Removed causing error
+        setSubmitError(null);
+
         try {
           const timeTaken = startTime ? Math.round((new Date().getTime() - startTime.getTime()) / 1000) : 0;
+          const questionIds = questions.map(q => q.id);
+          const answersArray = Array.from(answers.entries());
+
           const response = await fetch('/api/quiz/submit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              answers: Array.from(answers.entries()),
-              questionIds: questions.map(q => q.id),
-              timeTaken,
+              answers: answersArray,
+              questionIds: questionIds,
+              timeTaken: timeTaken,
+              assignmentId, 
+              paperId: quizDetails.subjectName, 
             }),
           });
+
           if (!response.ok) throw new Error('Failed to submit');
           const result = await response.json();
-          router.push(`/quiz/results/${result.attemptId}`);
+          router.push(`/dashboard/results/${result.attemptId}`);
         } catch (error: any) {
           setSubmitError(error.message);
-          setIsSubmitting(false);
+          setLocalIsSubmitting(false);
+          toast.error("Submission failed. Please try again.");
         }
-  };
+  }, [answers, questions, startTime, assignmentId, isSubmitting, router, quizDetails]);
 
   if (!isMounted || status === 'loading') {
     return (
@@ -193,16 +182,26 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
     );
   }
 
-  if (status === 'finished') {
+  if (status === 'finished' && submitError) {
     return (
       <div className="flex items-center justify-center min-h-screen p-4">
         <Alert className="max-w-md">
-          {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertCircle className="w-4 h-4 text-red-500" />}
-          <AlertTitle>{isSubmitting ? 'Submitting...' : 'Submission Error'}</AlertTitle>
-          <AlertDescription>{isSubmitting ? 'Please wait.' : submitError}</AlertDescription>
+          <AlertCircle className="w-4 h-4 text-red-500" />
+          <AlertTitle>Submission Error</AlertTitle>
+          <AlertDescription className="mb-4">{submitError}</AlertDescription>
+          <Button onClick={handleSubmit} className="w-full">Retry Submission</Button>
         </Alert>
       </div>
     );
+  }
+
+  if (status === 'finished') {
+      return (
+        <div className="flex items-center justify-center min-h-screen flex-col">
+            <Loader2 className="w-10 h-10 animate-spin text-primary" />
+            <p className="mt-4 text-sm text-muted-foreground">Submitting your answers...</p>
+        </div>
+      );
   }
 
   const currentQuestion = questions[currentIndex];
@@ -211,7 +210,6 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
   const answeredCount = answers.size;
   const isLastQuestion = currentIndex === totalQuestions - 1;
 
-  // --- Navigator Content ---
   const NavigatorContent = () => (
     <div className="flex flex-col h-full">
         <div className="flex justify-between items-center mb-4 flex-shrink-0">
@@ -221,7 +219,6 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
           </span>
         </div>
         
-        {/* Fixed height scrolling area */}
         <ScrollArea className="flex-1 -mx-2 px-2">
           <div className="grid grid-cols-5 gap-2 pb-6">
             {questions.map((q, index) => {
@@ -250,10 +247,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-slate-50/50">
-      
-      {/* --- Main Area --- */}
       <div className="flex-1 flex flex-col p-3 md:p-4 max-w-4xl mx-auto w-full h-[calc(100vh-64px)] md:h-screen overflow-y-auto">
-        {/* Header */}
         <header className="flex flex-col gap-3 mb-3 md:mb-4 flex-shrink-0">
           <div className="flex justify-between items-start">
             <div>
@@ -266,7 +260,6 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
                 </div>
             </div>
 
-            {/* Mobile Menu Trigger */}
             <div className="md:hidden">
                 <Sheet>
                     <SheetTrigger asChild>
@@ -282,15 +275,13 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
             </div>
           </div>
 
-          {/* Timer Bar */}
-          {mode === 'EXAM' && startTime && (
+          {mode === 'EXAM' && expiryTimestamp && (
              <div className="w-full flex justify-center bg-white p-2 md:p-3 rounded-xl shadow-sm border border-slate-100">
-                <QuizTimer expiryTimestamp={expiryTimestamp} />
+                <QuizTimer expiryTimestamp={expiryTimestamp} onExpire={finishQuiz} />
              </div>
           )}
         </header>
 
-        {/* Question Card */}
         <Card className="flex-1 flex flex-col shadow-sm border-slate-200 overflow-hidden min-h-0">
           <CardHeader className="pb-3 bg-white border-b border-slate-100 flex-shrink-0">
             <div className="flex justify-between items-center">
@@ -304,7 +295,6 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
           <div className="flex-1 overflow-y-auto bg-white/50">
             <div className="p-6 space-y-6">
                 
-                {/* --- SECTION DISPLAY (Instruction/Passage) --- */}
                 {currentQuestion.section && (
                     <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
                         <div className="flex items-center gap-2 mb-2 text-muted-foreground">
@@ -326,7 +316,6 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
                     </div>
                 )}
 
-                {/* --- IMAGE DISPLAY --- */}
                 {currentQuestion.imageUrl && (
                     <div className="mb-4 rounded-lg overflow-hidden border border-slate-200">
                         <img 
@@ -340,13 +329,11 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
                     </div>
                 )}
 
-                {/* --- QUESTION TEXT (Sanitized HTML) --- */}
                 <SafeHTML 
                     html={currentQuestion.text} 
                     className="prose prose-slate prose-sm md:prose-base max-w-none text-foreground leading-relaxed font-medium"
                 />
                 
-                {/* --- OBJECTIVE OPTIONS --- */}
                 {currentQuestion.type === 'OBJECTIVE' && (
                     <RadioGroup
                         value={currentAnswer}
@@ -368,7 +355,6 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
                         <label htmlFor={option.id} className="flex-1 cursor-pointer leading-snug text-slate-700 group-hover:text-slate-900">
                             <div className="flex gap-2">
                                 <span className="font-bold mr-1 text-slate-400 group-hover:text-slate-500 shrink-0 pt-0.5">{String.fromCharCode(65 + index)}.</span>
-                                {/* --- OPTION TEXT (Sanitized HTML) --- */}
                                 <SafeHTML html={option.text} className="text-sm md:text-base" />
                             </div>
                         </label>
@@ -377,7 +363,6 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
                     </RadioGroup>
                 )}
 
-                {/* --- THEORY INPUT --- */}
                 {currentQuestion.type === 'THEORY' && (
                     <div className="space-y-4">
                         <Textarea 
@@ -387,7 +372,6 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
                             className="min-h-[200px] font-mono text-sm bg-white focus:ring-primary"
                         />
                         
-                        {/* AI Grading Button (Practice Mode Only) */}
                         {mode === 'PRACTICE' && (
                             <div className="flex items-center gap-4">
                                 <Button 
@@ -402,7 +386,6 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
                             </div>
                         )}
 
-                        {/* AI Feedback Display */}
                         {aiGrading && (
                             <Alert className={aiGrading.isCorrect ? "bg-green-50 border-green-200" : "bg-orange-50 border-orange-200"}>
                                 {aiGrading.isCorrect ? <Check className="w-4 h-4 text-green-600" /> : <X className="w-4 h-4 text-orange-600" />}
@@ -440,15 +423,14 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
                     </Button>
                 ) : (
                     <Button 
-                        onClick={nextQuestion} 
-                        className="w-32"
+                        className="w-32" 
+                        onClick={nextQuestion}
                     >
                         Next <ChevronRight className="w-4 h-4 ml-1" />
                     </Button>
                 )}
             </div>
             
-            {/* Secondary Link to Submit Early */}
             {!isLastQuestion && (
                 <button 
                     onClick={() => setIsSubmitDialogOpen(true)}
@@ -461,12 +443,10 @@ export function QuizClient({ initialQuestions, quizDetails, mode }: QuizClientPr
         </Card>
       </div>
       
-      {/* --- Desktop Sidebar --- */}
       <aside className="hidden md:flex w-80 border-l bg-white p-6 flex-col shadow-sm z-10 h-screen sticky top-0 overflow-hidden">
         <NavigatorContent />
       </aside>
 
-      {/* --- Submit Dialog --- */}
       <Dialog open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
         <DialogContent>
             <DialogHeader>

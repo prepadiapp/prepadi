@@ -16,17 +16,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Pencil, Save, BookOpen, Calendar } from 'lucide-react';
+import { Loader2, Pencil, Save, BookOpen, Calendar, ShieldCheck, Globe } from 'lucide-react';
 import { toast } from 'sonner';
+import { useSession } from 'next-auth/react';
+import { UserRole } from '@prisma/client';
 
 interface EditPaperDialogProps {
   paper: {
     id: string;
     title: string;
-    year?: number | null; // Allow null here
+    year?: number | null; 
     isPublic?: boolean;
-    exam?: { shortName: string } | null; // Allow null for safety
-    subject?: { name: string } | null; // Allow null for safety
+    isVerified?: boolean; 
+    exam?: { shortName: string } | null;
+    subject?: { name: string } | null;
   };
   trigger?: React.ReactNode;
   onSuccess?: () => void;
@@ -34,12 +37,17 @@ interface EditPaperDialogProps {
 
 export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogProps) {
   const router = useRouter();
+  const { data: session } = useSession(); 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   
   // Form State
   const [title, setTitle] = useState(paper.title);
   const [isPublic, setIsPublic] = useState(paper.isPublic || false);
+  const [isVerified, setIsVerified] = useState(paper.isVerified || false);
+
+  const isAdmin = session?.user?.role === UserRole.ADMIN;
+  const isOrg = session?.user?.role === UserRole.ORGANIZATION;
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -49,10 +57,21 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/papers/${paper.id}`, {
+      const prefix = isOrg ? '/api/organization' : '/api/admin';
+      
+      const payload: any = { title };
+      
+      if (isOrg) {
+          payload.isPublic = isPublic; 
+      }
+      if (isAdmin) {
+          payload.isVerified = isVerified; 
+      }
+
+      const res = await fetch(`${prefix}/papers/${paper.id}`, {
         method: 'PATCH', 
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, isPublic })
+        body: JSON.stringify(payload)
       });
 
       if (!res.ok) throw new Error("Failed to update paper");
@@ -82,7 +101,7 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold tracking-tight">Edit Paper Details</DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            Update the title or visibility of this paper.
+            Update the title or status of this paper.
           </DialogDescription>
         </DialogHeader>
 
@@ -99,7 +118,8 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
               {paper.subject.name}
             </Badge>
           )}
-          {paper.year && (
+          {/* Hide Year for Orgs unless it exists and they want to see context */}
+          {paper.year && isAdmin && (
              <Badge variant="outline" className="text-slate-500 font-normal">
                <Calendar className="w-3 h-3 mr-1.5 opacity-70"/>
                {paper.year}
@@ -121,20 +141,44 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
             />
           </div>
 
-          {/* Public Toggle */}
-          <div className="flex items-center justify-between space-x-2 border border-slate-200 p-3 rounded-lg bg-slate-50/30">
-            <div className="space-y-0.5">
-              <Label htmlFor="public-mode" className="text-sm font-medium text-slate-900">Public Access</Label>
-              <p className="text-xs text-muted-foreground">
-                Make this paper visible to all students.
-              </p>
+          {/* Org: Public Toggle */}
+          {isOrg && (
+            <div className="flex items-center justify-between space-x-2 border border-slate-200 p-3 rounded-lg bg-slate-50/30">
+                <div className="space-y-0.5">
+                <Label htmlFor="public-mode" className="text-sm font-medium text-slate-900 flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-slate-500"/> Student Access
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                    Enable to make visible to your students immediately.
+                </p>
+                </div>
+                <Switch
+                id="public-mode"
+                checked={isPublic}
+                onCheckedChange={setIsPublic}
+                />
             </div>
-            <Switch
-              id="public-mode"
-              checked={isPublic}
-              onCheckedChange={setIsPublic}
-            />
-          </div>
+          )}
+
+          {/* Admin: Verified Toggle */}
+          {isAdmin && (
+            <div className="flex items-center justify-between space-x-2 border border-green-200 p-3 rounded-lg bg-green-50/30">
+                <div className="space-y-0.5">
+                <Label htmlFor="verified-mode" className="text-sm font-medium text-green-900 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-green-600"/> Verified Status
+                </Label>
+                <p className="text-xs text-green-700/80">
+                    Mark content as officially vetted.
+                </p>
+                </div>
+                <Switch
+                id="verified-mode"
+                checked={isVerified}
+                onCheckedChange={setIsVerified}
+                className="data-[state=checked]:bg-green-600"
+                />
+            </div>
+          )}
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
