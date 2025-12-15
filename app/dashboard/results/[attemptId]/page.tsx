@@ -135,7 +135,7 @@ export default async function ResultsPage({ params }: { params: Promise<{ attemp
   if (!attempt) {
     return (
       <div className="min-h-screen bg-slate-50/50 pb-20 md:pb-0">
-        <StudentNav isPro={isPro} />
+        
         <main className="md:pl-64 min-h-screen transition-all p-4 md:p-8 flex items-center justify-center">
             <Alert variant="destructive" className="max-w-md bg-white shadow-lg">
             <AlertCircle className="h-4 w-4" />
