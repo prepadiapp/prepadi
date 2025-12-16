@@ -58,7 +58,7 @@ export async function POST(req: Request) {
       examId,
       subjectId,
       year: parseInt(year),
-      limit: 60 // Set a reasonable limit for a standard paper (usually 40-60 objs)
+      limit: 60 
     });
 
     console.log(`[FIND-OR-CREATE] Found ${seededQuestions.length} questions.`);

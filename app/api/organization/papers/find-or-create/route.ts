@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthSession } from '@/lib/auth';
 import { UserRole } from '@prisma/client';
-import { questionService } from '@/lib/question-service/question-service';
 
 export async function POST(req: Request) {
   try {
@@ -21,7 +20,6 @@ export async function POST(req: Request) {
         });
         orgId = dbUser?.organizationId;
     }
-    // Check ownership if still missing
     if (!orgId) {
         const ownerOrg = await prisma.organization.findUnique({
             where: { ownerId: session.user.id },
@@ -46,23 +44,24 @@ export async function POST(req: Request) {
         const newPaper = await prisma.examPaper.create({
             data: {
                 title,
-                year: new Date().getFullYear(),
+                year: new Date().getFullYear(), 
                 subjectId,
                 examId: internalExam?.id!, 
                 organizationId: orgId,
                 authorId: session.user.id,
-                isPublic: false,
+                isPublic: true, 
                 isVerified: true
             }
         });
         return NextResponse.json(newPaper);
     }
 
-    // --- CASE 2: CLONE / FIND GLOBAL ---
+    // --- CASE 2: CLONE FROM GLOBAL (STRICT DB FETCH) ---
     if (!examId || !subjectId || !year) {
       return new NextResponse('Missing required fields for cloning', { status: 400 });
     }
 
+    // Check if Org ALREADY HAS this paper
     const existingOrgPaper = await prisma.examPaper.findFirst({
       where: {
         examId,
@@ -76,6 +75,11 @@ export async function POST(req: Request) {
       return NextResponse.json(existingOrgPaper);
     }
 
+    // --- FIND GLOBAL CONTENT (Paper OR Questions) ---
+    // Strategy: First look for a packaged ExamPaper. If not found, look for raw Questions.
+    
+    let sourceQuestions: any[] = [];
+
     const globalPaper = await prisma.examPaper.findFirst({
       where: {
         examId,
@@ -84,43 +88,82 @@ export async function POST(req: Request) {
         isPublic: true,
         organizationId: null 
       },
-      include: { questions: true }
+      include: { 
+          questions: {
+            include: { options: true, tags: true } 
+          } 
+      }
     });
+
+    if (globalPaper) {
+        sourceQuestions = globalPaper.questions;
+    } else {
+        // Fallback: Find loose global questions matching criteria
+        sourceQuestions = await prisma.question.findMany({
+            where: {
+                examId,
+                subjectId,
+                year: parseInt(year),
+                organizationId: null
+            },
+            include: { options: true, tags: true },
+            orderBy: { order: 'asc' }
+        });
+    }
+
+    if (sourceQuestions.length === 0) {
+        return new NextResponse("Global content (paper or questions) not found for this selection.", { status: 404 });
+    }
 
     const [exam, subject] = await Promise.all([
       prisma.exam.findUnique({ where: { id: examId } }),
       prisma.subject.findUnique({ where: { id: subjectId } })
     ]);
 
-    const paperTitle = `${exam?.shortName} ${subject?.name} ${year} (Clone)`;
+    const paperTitle = `${exam?.shortName} ${subject?.name} ${year}`;
 
-    let questionsToLink: { id: string }[] = [];
-
-    if (globalPaper && globalPaper.questions.length > 0) {
-        questionsToLink = globalPaper.questions.map(q => ({ id: q.id }));
-    } else {
-        const seededQuestions = await questionService.getQuestions({
-            examId,
-            subjectId,
-            year: parseInt(year),
-            limit: 60
+    // TRANSACTION: Create Paper + Deep Copy Questions
+    // We do NOT link to old question IDs. We create NEW ones owned by the Org.
+    const newOrgPaper = await prisma.$transaction(async (tx) => {
+        const paper = await tx.examPaper.create({
+            data: {
+                title: paperTitle,
+                year: parseInt(year),
+                examId,
+                subjectId,
+                authorId: session.user.id,
+                organizationId: orgId, 
+                isPublic: true, 
+                isVerified: true
+            }
         });
-        questionsToLink = seededQuestions.map(q => ({ id: q.id }));
-    }
 
-    const newOrgPaper = await prisma.examPaper.create({
-      data: {
-        title: paperTitle,
-        year: parseInt(year),
-        examId,
-        subjectId,
-        authorId: session.user.id,
-        organizationId: orgId, 
-        isPublic: false, 
-        questions: {
-          connect: questionsToLink
+        // Bulk create copies of questions
+        for (const q of sourceQuestions) {
+            await tx.question.create({
+                data: {
+                    text: q.text,
+                    explanation: q.explanation,
+                    imageUrl: q.imageUrl,
+                    type: q.type,
+                    year: parseInt(year),
+                    examId,
+                    subjectId,
+                    organizationId: orgId, // OWNED BY ORG
+                    paperId: paper.id,     // LINKED TO NEW PAPER
+                    options: {
+                        create: q.options.map((opt: any) => ({
+                            text: opt.text,
+                            isCorrect: opt.isCorrect
+                        }))
+                    },
+                    tags: {
+                        connect: q.tags.map((t: any) => ({ id: t.id })) // Reuse tags
+                    }
+                }
+            });
         }
-      }
+        return paper;
     });
 
     return NextResponse.json(newOrgPaper);

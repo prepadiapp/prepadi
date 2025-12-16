@@ -24,14 +24,17 @@ import {
   ImageIcon,
   Loader2,
   Check,
-  AlignLeft
+  AlignLeft,
+  Tag
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { TagInput } from './TagInput'; // Using the TagInput component you provided
 
 interface QuestionWithOptions extends Question {
   options: Option[];
-  section?: { instruction: string } | null; // Include section relation
+  section?: { instruction: string } | null;
+  tags?: { id: string; name: string }[];
 }
 
 interface Props {
@@ -52,12 +55,15 @@ export function QuestionAccordionItem({
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
+  const isAdmin = apiPrefix === '/api/admin';
+
   const [formData, setFormData] = useState({
     text: question.text,
     explanation: question.explanation || '',
     imageUrl: question.imageUrl || '',
     options: question.options || [],
-    section: question.section?.instruction || '', // NEW: Section text
+    section: question.section?.instruction || '',
+    tags: question.tags?.map(t => t.name) || [], // Map initial tags
   });
 
   const handleSave = async (e: React.MouseEvent) => {
@@ -72,7 +78,8 @@ export function QuestionAccordionItem({
           explanation: formData.explanation,
           imageUrl: formData.imageUrl,
           options: formData.options,
-          section: formData.section, // Send section text
+          section: formData.section,
+          tags: isAdmin ? formData.tags : undefined, // Send tags if admin
         }),
       });
 
@@ -135,18 +142,28 @@ export function QuestionAccordionItem({
               <CollapsibleTrigger asChild>
                 <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2 cursor-pointer select-none min-w-0">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
                         Q{index + 1}
                       </span>
                       <Badge variant={question.type === 'THEORY' ? 'secondary' : 'outline'} className="text-[9px] md:text-[10px] h-4 md:h-5 px-1.5 font-medium border-slate-200 text-slate-500">
                         {question.type}
                       </Badge>
-                      {/* Section Badge */}
                       {formData.section && (
                           <Badge variant="secondary" className="text-[9px] md:text-[10px] h-4 md:h-5 px-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-100 truncate max-w-[100px]">
                              Section
                           </Badge>
+                      )}
+                      {/* Show Tags in Header */}
+                      {formData.tags && formData.tags.length > 0 && (
+                          <div className="flex gap-1">
+                              {formData.tags.slice(0, 2).map(t => (
+                                  <Badge key={t} variant="outline" className="text-[9px] h-4 px-1 text-slate-500 border-slate-200">
+                                      {t}
+                                  </Badge>
+                              ))}
+                              {formData.tags.length > 2 && <span className="text-[9px] text-slate-400">+{formData.tags.length - 2}</span>}
+                          </div>
                       )}
                     </div>
                     
@@ -165,7 +182,7 @@ export function QuestionAccordionItem({
             <CollapsibleContent className="border-t border-slate-100 bg-slate-50/30">
               <div className="p-3 md:p-5 space-y-4">
                 
-                {/* NEW: Section / Instruction Field */}
+                {/* Section / Instruction Field */}
                 <div className="space-y-1">
                   <Label className="text-[10px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                      <AlignLeft className="w-3.5 h-3.5" /> Section / Instruction (Optional)
@@ -191,8 +208,8 @@ export function QuestionAccordionItem({
 
                 {/* Image Field */}
                 <div>
-                   <Label className="text-[10px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Illustration</Label>
-                   <div className="relative">
+                    <Label className="text-[10px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1 block">Illustration</Label>
+                    <div className="relative">
                       <ImageIcon className="absolute left-2.5 md:left-3 top-2.5 md:top-2.5 h-3.5 w-3.5 md:h-4 md:w-4 text-slate-400" />
                       <Input 
                         placeholder="Paste image URL here..."
@@ -200,8 +217,23 @@ export function QuestionAccordionItem({
                         onChange={(e) => setFormData({...formData, imageUrl: e.target.value})}
                         className="pl-8 md:pl-9 bg-white border-slate-200 text-xs h-8 md:h-9"
                       />
-                   </div>
+                    </div>
                 </div>
+
+                {/* --- ADMIN ONLY: TAGS --- */}
+                {isAdmin && (
+                    <div className="space-y-1">
+                        <Label className="text-[10px] md:text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                            <Tag className="w-3.5 h-3.5" /> Tags (Admin Only)
+                        </Label>
+                        <TagInput 
+                            value={formData.tags}
+                            onChange={(tags) => setFormData({...formData, tags})}
+                            placeholder="Add topics..."
+                        />
+                        <p className="text-[10px] text-slate-400">Press Enter to add tags (e.g. Algebra, Motion)</p>
+                    </div>
+                )}
 
                 {question.type === 'OBJECTIVE' && (
                   <div className="space-y-2 md:space-y-3 bg-white border border-slate-200 p-3 md:p-4 rounded-lg">
@@ -228,13 +260,13 @@ export function QuestionAccordionItem({
                               <Check className="w-2.5 h-2.5 md:w-3 md:h-3 text-white absolute pointer-events-none opacity-0 peer-checked:opacity-100" />
                            </div>
                            <Input 
-                              value={opt.text}
-                              onChange={(e) => updateOption(i, 'text', e.target.value)}
-                              className={cn(
-                                "flex-1 bg-transparent text-xs md:text-sm h-8 md:h-9 transition-colors",
-                                opt.isCorrect ? "border-green-500 ring-1 ring-green-500/20 bg-green-50/30" : "border-slate-200 focus-visible:border-slate-400"
-                              )}
-                              placeholder={`Option ${String.fromCharCode(65 + i)}`}
+                             value={opt.text}
+                             onChange={(e) => updateOption(i, 'text', e.target.value)}
+                             className={cn(
+                               "flex-1 bg-transparent text-xs md:text-sm h-8 md:h-9 transition-colors",
+                               opt.isCorrect ? "border-green-500 ring-1 ring-green-500/20 bg-green-50/30" : "border-slate-200 focus-visible:border-slate-400"
+                             )}
+                             placeholder={`Option ${String.fromCharCode(65 + i)}`}
                            />
                            <Button 
                              type="button" 
@@ -243,7 +275,7 @@ export function QuestionAccordionItem({
                              onClick={() => removeOption(i)}
                              className="h-7 w-7 md:h-8 md:w-8 text-slate-300 hover:text-red-500 hover:bg-red-50"
                            >
-                              <X className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                             <X className="w-3.5 h-3.5 md:w-4 md:h-4" />
                            </Button>
                         </div>
                       ))}
@@ -262,25 +294,25 @@ export function QuestionAccordionItem({
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 mt-2">
-                   <Button 
-                     variant="ghost" 
-                     size="sm" 
-                     onClick={() => onDelete(question.id)} 
-                     className="text-red-500 hover:text-red-600 hover:bg-red-50 h-8 md:h-9 px-2 md:px-3 text-[10px] md:text-xs font-medium"
-                   >
-                      <Trash2 className="w-3.5 h-3.5 mr-1 md:mr-1.5" /> Remove
-                   </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => onDelete(question.id)} 
+                      className="text-red-500 hover:text-red-600 hover:bg-red-50 h-8 md:h-9 px-2 md:px-3 text-[10px] md:text-xs font-medium"
+                    >
+                       <Trash2 className="w-3.5 h-3.5 mr-1 md:mr-1.5" /> Remove
+                    </Button>
 
-                   <div className="flex gap-2 md:gap-3">
-                      <Button variant="outline" size="sm" onClick={() => setIsOpen(false)} className="h-8 md:h-9 text-[10px] md:text-xs">Cancel</Button>
-                      <Button size="sm" onClick={handleSave} disabled={isSaving} className="h-8 md:h-9 min-w-[90px] md:min-w-[100px] text-[10px] md:text-xs font-semibold shadow-sm">
-                         {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : (
-                           <>
+                    <div className="flex gap-2 md:gap-3">
+                       <Button variant="outline" size="sm" onClick={() => setIsOpen(false)} className="h-8 md:h-9 text-[10px] md:text-xs">Cancel</Button>
+                       <Button size="sm" onClick={handleSave} disabled={isSaving} className="h-8 md:h-9 min-w-[90px] md:min-w-[100px] text-[10px] md:text-xs font-semibold shadow-sm">
+                          {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : (
+                            <>
                              <Save className="w-3.5 h-3.5 mr-1.5" /> Save
-                           </>
-                         )}
-                      </Button>
-                   </div>
+                            </>
+                          )}
+                       </Button>
+                    </div>
                 </div>
               </div>
             </CollapsibleContent>
