@@ -5,7 +5,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ChevronRight, Clock, Zap, CheckCircle2, Tag, BookOpen } from 'lucide-react';
+import { ChevronRight, Clock, Zap, Tag, RotateCcw } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { MultiSelect } from '@/components/admin/MultiSelect'; 
@@ -139,28 +139,53 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
             </div>
         </div>
 
-        {/* Row 2: Topics (Tags) */}
-        <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                3. Filter by Topics <Tag className="w-3 h-3"/>
-            </label>
-            <MultiSelect 
-                options={availableTags} 
-                selected={selectedTags} 
-                onChange={setSelectedTags} 
-                placeholder="Search topics (e.g. Algebra, Motion)..." 
-                className="h-11 bg-slate-50"
-            />
-            <p className="text-[10px] text-muted-foreground">Leave empty to select a specific year (Standard Paper).</p>
-        </div>
+        {/* Row 2: Standard Flow (Year & Mode) - VISIBLE IF TAGS NOT SELECTED */}
+        {!isTagMode && (
+            <div className="grid md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="space-y-2">
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        3. Choose Year
+                    </label>
+                    <Select onValueChange={setSelectedYear} disabled={selectedSubject === 'all'}>
+                        <SelectTrigger className="h-11 bg-slate-50 border-slate-200">
+                            <SelectValue placeholder={selectedSubject === 'all' ? "Select a Subject first" : "Select Year"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
+                
+                <div className="space-y-2">
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        4. Mode
+                    </label>
+                    <div className="flex gap-2">
+                        <Button 
+                            variant={isPracticeMode ? "secondary" : "outline"} 
+                            className={cn("flex-1 h-11", isPracticeMode && "bg-orange-100 text-orange-800 hover:bg-orange-200 border-orange-200")}
+                            onClick={() => setIsPracticeMode(true)}
+                        >
+                            <Zap className="w-4 h-4 mr-2" /> Practice
+                        </Button>
+                        <Button 
+                            variant={!isPracticeMode ? "default" : "outline"} 
+                            className={cn("flex-1 h-11", !isPracticeMode && "bg-blue-600 hover:bg-blue-700")}
+                            onClick={() => setIsPracticeMode(false)}
+                        >
+                            <Clock className="w-4 h-4 mr-2" /> Exam
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        )}
 
-        {/* Row 3: Conditional Inputs */}
-        <div className="grid md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
-            {isTagMode ? (
-                /* Tag Mode: Show Question Count */
+        {/* Row 3: Tag Mode Override */}
+        {isTagMode && (
+             <div className="grid md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
                 <div className="space-y-2">
                     <label className="text-xs font-semibold text-blue-600 uppercase tracking-wider">
-                        4. Question Count
+                        Question Count
                     </label>
                     <Select value={questionCount} onValueChange={setQuestionCount}>
                         <SelectTrigger className="h-11 bg-blue-50 border-blue-200 text-blue-900">
@@ -174,45 +199,70 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
                         </SelectContent>
                     </Select>
                 </div>
-            ) : (
-                /* Standard Mode: Show Year */
                 <div className="space-y-2">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        4. Choose Year
+                    <label className="text-xs font-semibold text-blue-600 uppercase tracking-wider">
+                        Mode
                     </label>
-                    <Select onValueChange={setSelectedYear} disabled={selectedSubject === 'all'}>
-                        <SelectTrigger className="h-11 bg-slate-50 border-slate-200">
-                            <SelectValue placeholder={selectedSubject === 'all' ? "Select a Subject first" : "Select Year"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-            )}
-            
-            {/* Mode Toggle */}
-            <div className="space-y-2">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    5. Mode
-                </label>
-                <div className="flex gap-2">
-                    <Button 
-                        variant={isPracticeMode ? "secondary" : "outline"} 
-                        className={cn("flex-1 h-11", isPracticeMode && "bg-orange-100 text-orange-800 hover:bg-orange-200 border-orange-200")}
-                        onClick={() => setIsPracticeMode(true)}
-                    >
-                        <Zap className="w-4 h-4 mr-2" /> Practice
-                    </Button>
-                    <Button 
-                        variant={!isPracticeMode ? "default" : "outline"} 
-                        className={cn("flex-1 h-11", !isPracticeMode && "bg-blue-600 hover:bg-blue-700")}
-                        onClick={() => setIsPracticeMode(false)}
-                    >
-                        <Clock className="w-4 h-4 mr-2" /> Exam
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button 
+                            variant={isPracticeMode ? "secondary" : "outline"} 
+                            className={cn("flex-1 h-11", isPracticeMode && "bg-orange-100 text-orange-800 hover:bg-orange-200 border-orange-200")}
+                            onClick={() => setIsPracticeMode(true)}
+                        >
+                            <Zap className="w-4 h-4 mr-2" /> Practice
+                        </Button>
+                        <Button 
+                            variant={!isPracticeMode ? "default" : "outline"} 
+                            className={cn("flex-1 h-11", !isPracticeMode && "bg-blue-600 hover:bg-blue-700")}
+                            onClick={() => setIsPracticeMode(false)}
+                        >
+                            <Clock className="w-4 h-4 mr-2" /> Exam
+                        </Button>
+                    </div>
                 </div>
             </div>
+        )}
+
+        {/* Divider / Topic Input */}
+        <div className="relative pt-2">
+            <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                <div className="w-full border-t border-slate-200"></div>
+            </div>
+            <div className="relative flex justify-center">
+                <span className="bg-white px-2 text-xs text-muted-foreground uppercase tracking-widest">
+                    OR
+                </span>
+            </div>
+        </div>
+
+        <div className="space-y-2">
+            <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                    <Tag className="w-3 h-3"/> Filter by Topic (Random Year)
+                </label>
+                {isTagMode && (
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setSelectedTags([])} 
+                        className="h-6 text-[10px] text-red-500 hover:text-red-600 hover:bg-red-50 px-2"
+                    >
+                        <RotateCcw className="w-3 h-3 mr-1" /> Reset to Year Mode
+                    </Button>
+                )}
+            </div>
+            <MultiSelect 
+                options={availableTags} 
+                selected={selectedTags} 
+                onChange={setSelectedTags} 
+                placeholder="Search topics (e.g. Algebra, Motion)..." 
+                className={cn("h-11", isTagMode ? "bg-blue-50 border-blue-200" : "bg-slate-50")}
+            />
+            {!isTagMode && (
+                <p className="text-[10px] text-muted-foreground">
+                    Selecting a topic will switch to Random Year mode.
+                </p>
+            )}
         </div>
 
         <Button
