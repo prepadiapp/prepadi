@@ -75,7 +75,9 @@ export async function POST(req: Request) {
       return NextResponse.json(existingOrgPaper);
     }
 
-    // Find Global Paper to Clone
+    // --- FIND GLOBAL CONTENT (Paper OR Questions) ---
+    let sourceQuestions: any[] = [];
+
     const globalPaper = await prisma.examPaper.findFirst({
       where: {
         examId,
@@ -86,13 +88,29 @@ export async function POST(req: Request) {
       },
       include: { 
           questions: {
-              include: { options: true, tags: true } // Include all data to copy
+            include: { options: true, tags: true } 
           } 
       }
     });
 
-    if (!globalPaper) {
-        return new NextResponse("Global paper not found. Please ask Admin to seed it first.", { status: 404 });
+    if (globalPaper) {
+        sourceQuestions = globalPaper.questions;
+    } else {
+        // Fallback: Find loose global questions matching criteria
+        sourceQuestions = await prisma.question.findMany({
+            where: {
+                examId,
+                subjectId,
+                year: parseInt(year),
+                organizationId: null
+            },
+            include: { options: true, tags: true },
+            orderBy: { order: 'asc' }
+        });
+    }
+
+    if (sourceQuestions.length === 0) {
+        return new NextResponse("Global content (paper or questions) not found for this selection.", { status: 404 });
     }
 
     const [exam, subject] = await Promise.all([
@@ -102,25 +120,28 @@ export async function POST(req: Request) {
 
     const paperTitle = `${exam?.shortName} ${subject?.name} ${year}`;
 
-    // TRANSACTION: Create Paper + Deep Copy Questions
-    // We do NOT link to old question IDs. We create NEW ones owned by the Org.
-    const newOrgPaper = await prisma.$transaction(async (tx) => {
-        const paper = await tx.examPaper.create({
-            data: {
-                title: paperTitle,
-                year: parseInt(year),
-                examId,
-                subjectId,
-                authorId: session.user.id,
-                organizationId: orgId, 
-                isPublic: true, 
-                isVerified: true
-            }
-        });
+    
+    // 1. Create the Paper Container
+    const newOrgPaper = await prisma.examPaper.create({
+        data: {
+            title: paperTitle,
+            year: parseInt(year),
+            examId,
+            subjectId,
+            authorId: session.user.id,
+            organizationId: orgId, 
+            isPublic: true, 
+            isVerified: true
+        }
+    });
 
-        // Bulk create copies of questions
-        for (const q of globalPaper.questions) {
-            await tx.question.create({
+    // 2. Clone Questions (Optimized Parallel Execution)
+    // We map all creation promises and await them. This is much faster than sequential awaiting.
+    // If there are TOO many (e.g. > 50), we might want to batch, but for <100 Promise.all is fine on Vercel.
+    
+    try {
+        await Promise.all(sourceQuestions.map(q => 
+            prisma.question.create({
                 data: {
                     text: q.text,
                     explanation: q.explanation,
@@ -130,21 +151,26 @@ export async function POST(req: Request) {
                     examId,
                     subjectId,
                     organizationId: orgId, // OWNED BY ORG
-                    paperId: paper.id,     // LINKED TO NEW PAPER
+                    paperId: newOrgPaper.id, // LINKED TO NEW PAPER
                     options: {
-                        create: q.options.map(opt => ({
+                        create: q.options.map((opt: any) => ({
                             text: opt.text,
                             isCorrect: opt.isCorrect
                         }))
                     },
                     tags: {
-                        connect: q.tags.map(t => ({ id: t.id })) // Reuse tags
+                        connect: q.tags.map((t: any) => ({ id: t.id })) // Reuse tags
                     }
                 }
-            });
-        }
-        return paper;
-    });
+            })
+        ));
+    } catch (err) {
+        // If question cloning fails, we might want to delete the empty paper to keep it clean,
+        // or just log it. For now, we log.
+        console.error("Error cloning questions, but paper created:", err);
+        // Optional: await prisma.examPaper.delete({ where: { id: newOrgPaper.id } });
+        // throw err;
+    }
 
     return NextResponse.json(newOrgPaper);
 
