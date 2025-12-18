@@ -20,7 +20,6 @@ export async function GET(
     const { id } = resolvedParams;
     
     if (!id) return new NextResponse('Missing Question ID', { status: 400 });
-
     const question = await prisma.question.findUnique({
       where: { id },
       include: {
@@ -74,28 +73,16 @@ export async function PATCH(
     } = body;
 
     // --- 1. Validation ---
-    // We allow partial updates, so we only validate fields if they are present.
-    // However, text is usually required for any meaningful update.
     if (text === '') {
        return new NextResponse('Question text cannot be empty', { status: 400 });
     }
 
-    // Determine Question Type (Default to OBJECTIVE if not provided, or fetch existing if needed)
-    // For partial updates without 'type', we skip type-specific validation unless 'options' are touched.
     const qType = (type as QuestionType) || QuestionType.OBJECTIVE;
 
     if (qType === QuestionType.OBJECTIVE && options) {
       if (Array.isArray(options) && options.length < 2) {
         return new NextResponse('Objective questions must have at least 2 options', { status: 400 });
       }
-      // Note: We skip the "exactly one correct" check for partial updates to allow flexible editing steps,
-      // but you can uncomment this if strictness is required at every save step.
-      /*
-      const correctOptions = options.filter((opt: any) => opt.isCorrect).length;
-      if (correctOptions !== 1) {
-        return new NextResponse('Objective questions must have exactly one correct answer', { status: 400 });
-      }
-      */
     }
 
     // --- 2. Handle Tags ---
@@ -137,7 +124,7 @@ export async function PATCH(
             }
             sectionId = dbSection.id;
         } else {
-            sectionId = null; // Explicitly remove section if empty string sent
+            sectionId = null; 
         }
     }
 
@@ -154,7 +141,6 @@ export async function PATCH(
         const existingOptionIds = existingOptions.map(o => o.id);
         
         const safeOptions = options || [];
-        // Filter out temp IDs from frontend (e.g. 'temp-123')
         const incomingOptionIds = safeOptions
             .filter((o: any) => o.id && !o.id.toString().startsWith('temp-'))
             .map((o: any) => o.id);
@@ -188,7 +174,7 @@ export async function PATCH(
         }
     }
 
-    // --- 5. Build Update Data Object (Partial Support) ---
+    // --- 5. Build Update Data ---
     const updateData: any = {};
     if (text) updateData.text = text;
     if (explanation !== undefined) updateData.explanation = explanation;
@@ -201,20 +187,31 @@ export async function PATCH(
     if (tags) updateData.tags = { set: tagIdsToConnect };
 
     // --- 6. Execute Transaction ---
-    const transactionOps = [
+    // We do NOT use the return value of this transaction directly for the response
+    // because it won't contain the fully updated relations (especially options changed in parallel ops).
+    await prisma.$transaction([
         prisma.question.update({
             where: { id },
             data: updateData,
         }),
         ...deleteOps,
         ...updateOps,
-    ];
-    
-    if (createOps) transactionOps.push(createOps);
+        ...(createOps ? [createOps] : [])
+    ]);
 
-    const [updatedQuestion] = await prisma.$transaction(transactionOps);
+    // --- 7. Fetch the Complete Result ---
+    // Fetch the fresh question with all relations to return to the frontend.
+    // This ensures the Accordion receives the tags as objects { id, name }
+    const completeQuestion = await prisma.question.findUnique({
+      where: { id },
+      include: {
+        options: true,
+        tags: true, // This returns tags as objects, which PaperEditor expects
+        section: true,
+      }
+    });
 
-    return NextResponse.json(updatedQuestion);
+    return NextResponse.json(completeQuestion);
 
   } catch (error) {
     console.error('[QUESTION_PATCH_API_ERROR]', error);
@@ -224,7 +221,6 @@ export async function PATCH(
 
 /**
  * DELETE: Delete a question
- * Includes cleanup of UserAnswers and Organization check
  */
 export async function DELETE(
   request: Request,
@@ -241,7 +237,6 @@ export async function DELETE(
     
     if (!id) return new NextResponse('Missing Question ID', { status: 400 });
 
-    // Use a transaction to delete safely
     await prisma.$transaction([
       prisma.userAnswer.deleteMany({
         where: { questionId: id },
@@ -249,8 +244,6 @@ export async function DELETE(
       prisma.question.delete({
         where: { 
           id: id,
-          // Ensure admin can only delete general questions (optional safeguard)
-          // Remove this check if Admin should be able to delete Org questions too
           organizationId: null, 
         },
       }),

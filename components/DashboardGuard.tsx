@@ -40,7 +40,7 @@ export function DashboardGuard({ children }: { children: React.ReactNode }) {
       const data = await res.json();
 
       if (!data.authenticated) {
-        setChecking(false); // Let middleware handle auth redirect
+        router.push(`/login?callbackUrl=${encodeURIComponent(pathname)}`);
         return;
       }
 
@@ -79,7 +79,9 @@ export function DashboardGuard({ children }: { children: React.ReactNode }) {
 
     } catch (error) {
       console.error("Guard check failed", error);
-      setChecking(false); 
+      // In case of error (network etc), we might want to redirect to login or show error
+      // Safest is to redirect to login if we can't verify status
+      router.push('/login'); 
     }
   };
 
