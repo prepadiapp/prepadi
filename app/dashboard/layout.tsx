@@ -36,7 +36,7 @@ export default async function StudentLayout({ children }: { children: React.Reac
   
   return (
     <DashboardGuard>
-      <div className="min-h-screen bg-slate-50/50 pb-20 md:pb-0">
+      <div className="min-h-screen bg-slate-50 pb-20 md:pb-0">
         <StudentNav 
             isPro={isPro} 
             isOrgMember={isOrgMember}
