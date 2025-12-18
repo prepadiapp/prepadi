@@ -105,7 +105,7 @@ function QuestionEditorContent() {
         setYear(question.year);
         setSubjectId(question.subjectId);
         setExamId(question.examId);
-        setTags(question.tags?.map((t: any) => t.name) || []);
+        setTags(question.tags?.map((t: any) => (typeof t === 'string' ? t : t.name)) || []);
         setSection(question.section?.instruction || ''); 
         setQType(question.type as QuestionType);
         setMarkingGuide(question.markingGuide || '');

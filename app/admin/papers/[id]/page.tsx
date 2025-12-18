@@ -20,7 +20,8 @@ export default async function PaperManagePage({ params }: PageProps) {
       questions: {
         include: { 
             options: true,
-            section: true
+            section: true,
+            tags: true
         },
         orderBy: { order: 'asc' }
       }

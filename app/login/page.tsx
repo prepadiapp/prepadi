@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { signIn, getSession } from 'next-auth/react';
+import { signIn, getSession, useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -50,11 +50,24 @@ function LoginAlerts() {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { data: session, status } = useSession(); // Get session
+  const registered = searchParams.get('registered');
+  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (status === 'authenticated') {
+      // Determine redirect based on role if possible, or default to callback/dashboard
+      // For simplicity, stick to callbackUrl or dashboard logic
+      router.replace(callbackUrl); 
+    }
+  }, [status, router, callbackUrl]);
 
 
   const handlePostLogin = async () => {
