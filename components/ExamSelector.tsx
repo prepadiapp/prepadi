@@ -5,10 +5,12 @@ import { useState, useEffect, Suspense } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ChevronRight, Clock, Zap, Tag, RotateCcw } from 'lucide-react';
+import { ChevronRight, Clock, Zap, Tag, RotateCcw, Download, WifiOff, Loader2 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { MultiSelect } from '@/components/admin/MultiSelect'; 
+import { saveExamForOffline } from '@/lib/offline-storage';
+import { toast } from 'sonner';
 
 interface ExamSelectorProps {
   exams: Exam[];
@@ -24,11 +26,11 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
 
   const [selectedExam, setSelectedExam] = useState<Exam | null>(null);
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
-  const [selectedYear, setSelectedYear] = useState<string>(''); // "" means not selected
+  const [selectedYear, setSelectedYear] = useState<string>(''); 
 
   // --- New Filters ---
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [questionCount, setQuestionCount] = useState('20'); // Default for tag mode
+  const [questionCount, setQuestionCount] = useState('20'); 
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [years, setYears] = useState<number[]>([]);
@@ -36,6 +38,7 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
 
   const [isLoadingSubjects, setIsLoadingSubjects] = useState(true);
   const [isLoadingYears, setIsLoadingYears] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Load Subjects on Mount
   useEffect(() => {
@@ -46,21 +49,19 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
       .catch((err) => console.error(err))
       .finally(() => setIsLoadingSubjects(false));
 
-    // Fetch Tags (Public Endpoint)
+    // Fetch Tags
     fetch('/api/tags')
        .then(res => res.json())
        .then(data => setAvailableTags(data.map((t:any) => ({ value: t.name, label: t.name }))))
        .catch(e => console.error("Tags error", e));
   }, []);
 
-  // When Exam/Subject changes, load Years (if applicable)
+  // When Exam/Subject changes, load Years
   useEffect(() => {
     if (selectedExam && selectedSubject !== 'all') {
       setIsLoadingYears(true);
       setYears([]);
       
-      // Only fetch years if we are in "Standard Mode" (No tags yet)
-      // or to populate the dropdown just in case
       fetch(`/api/years?examId=${selectedExam.id}&subjectId=${selectedSubject}`)
         .then((res) => res.json())
         .then((data) => setYears(data))
@@ -77,18 +78,15 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
         ? 'all' 
         : subjects.find(s => s.id === selectedSubject)?.name.toLowerCase().replace(/\s+/g, '-') || 'all';
     
-    // Logic: If tags are selected, Year is "random". If no tags, Year must be selected.
     const yearSlug = selectedTags.length > 0 ? 'random' : selectedYear;
 
-    if (!yearSlug) return; // Validation
+    if (!yearSlug) return; 
     
     const mode = isPracticeMode ? 'practice' : 'exam';
     
-    // Build Query String
     const params = new URLSearchParams();
     params.set('mode', mode);
     
-    // Only pass limit if we are in Tag mode (Random Year)
     if (selectedTags.length > 0) {
         params.set('limit', questionCount);
         params.set('tags', selectedTags.join(','));
@@ -97,7 +95,40 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
     router.push(`/quiz/${examSlug}/${subjectSlug}/${yearSlug}?${params.toString()}`);
   };
 
+  const handleDownload = async () => {
+    if (!selectedExam || !selectedYear || isTagMode) return; 
+
+    setIsDownloading(true);
+    try {
+        const res = await fetch('/api/quiz/download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                examId: selectedExam.id,
+                subjectId: selectedSubject,
+                year: selectedYear
+            })
+        });
+
+        if (!res.ok) {
+            const errorMsg = await res.text();
+            throw new Error(errorMsg || "Failed to fetch exam data");
+        }
+        
+        const data = await res.json();
+        await saveExamForOffline(data);
+        toast.success("Exam downloaded for offline use!");
+    } catch (error: any) {
+        toast.error(error.message || "Download failed.");
+        console.error(error);
+    } finally {
+        setIsDownloading(false);
+    }
+  };
+
   const isTagMode = selectedTags.length > 0;
+  const canStart = !!selectedExam && (isTagMode || !!selectedYear);
+  const canDownload = !!selectedExam && !!selectedYear && !isTagMode && selectedSubject !== 'all'; 
 
   return (
     <Card className="w-full border-slate-200 shadow-sm bg-white">
@@ -139,7 +170,7 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
             </div>
         </div>
 
-        {/* Row 2: Standard Flow (Year & Mode) - VISIBLE IF TAGS NOT SELECTED */}
+        {/* Row 2: Standard Flow (Year & Mode) */}
         {!isTagMode && (
             <div className="grid md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
                 <div className="space-y-2">
@@ -265,14 +296,31 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
             )}
         </div>
 
-        <Button
-          size="lg"
-          className="w-full text-base font-semibold py-6 mt-4"
-          disabled={!selectedExam || (!isTagMode && !selectedYear)}
-          onClick={handleStartExam}
-        >
-          Start Session <ChevronRight className="w-5 h-5 ml-2" />
-        </Button>
+        {/* Action Buttons - Responsive Stack */}
+        <div className="flex flex-col sm:flex-row gap-3 mt-6">
+            <Button
+              size="lg"
+              variant="outline"
+              className="w-full sm:flex-1 py-6 text-base font-semibold border-2 hover:bg-slate-50"
+              disabled={!canDownload || isDownloading}
+              onClick={handleDownload}
+            >
+              {isDownloading ? (
+                  <span className="flex items-center gap-2"><Loader2 className="w-5 h-5 animate-spin" /> Saving...</span>
+              ) : (
+                  <span className="flex items-center gap-2"><Download className="w-5 h-5"/> Save Offline</span>
+              )}
+            </Button>
+
+            <Button
+              size="lg"
+              className="w-full sm:flex-[2] py-6 text-base font-semibold"
+              disabled={!canStart}
+              onClick={handleStartExam}
+            >
+              Start Session <ChevronRight className="w-5 h-5 ml-2" />
+            </Button>
+        </div>
       </CardContent>
     </Card>
   );
