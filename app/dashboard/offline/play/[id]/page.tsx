@@ -9,7 +9,6 @@ import { useRouter } from 'next/navigation';
 
 export default function OfflinePlayerPage({ params }: { params: Promise<{ id: string }> }) {
   // Unwrap params using `use` hook (Next.js 13+ pattern for async params in client components)
-  // Ensure we handle the promise correctly
   const resolvedParams = use(params);
   const id = resolvedParams.id; // Extract ID safely
 
@@ -56,7 +55,6 @@ export default function OfflinePlayerPage({ params }: { params: Promise<{ id: st
           <div className="h-screen flex items-center justify-center flex-col gap-4">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
               <p className="text-slate-500">Loading offline exam...</p>
-              {/* Optional: Add a cancel button if it hangs too long */}
               <Button variant="ghost" size="sm" onClick={() => router.back()}>Cancel</Button>
           </div>
       );
@@ -85,7 +83,7 @@ export default function OfflinePlayerPage({ params }: { params: Promise<{ id: st
         mode="PRACTICE" 
         initialDuration={examData.duration}
         userId="offline-user" 
-        assignmentId={null} 
+        assignmentId={undefined} 
         isOffline={true} 
     />
   );
