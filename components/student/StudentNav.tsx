@@ -2,18 +2,19 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, LineChart, BookOpen, User, Menu, CreditCard, Sparkles, Building2, CalendarCheck } from 'lucide-react';
+import { Home, LineChart, BookOpen, User, Menu, CreditCard, Sparkles, Building2, CalendarCheck, WifiOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
 import { SignOutButton } from '@/components/SignOutButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { InstallPrompt } from '@/components/InstallPrompt'; // Import InstallPrompt
 
 const baseNavItems = [
   { href: '/dashboard', label: 'Home', icon: Home },
-  // Assessments is now conditional
   { href: '/dashboard/practice', label: 'Practice', icon: BookOpen },
+  { href: '/dashboard/offline', label: 'Offline Exams', icon: WifiOff },
   { href: '/dashboard/performance', label: 'Performance', icon: LineChart },
   { href: '/dashboard/profile', label: 'Profile', icon: User },
 ];
@@ -27,12 +28,10 @@ interface StudentNavProps {
 export function StudentNav({ isPro, isOrgMember, orgName }: StudentNavProps) {
   const pathname = usePathname();
 
-  // Conditionally build nav items
   const navItems = [
     ...baseNavItems,
   ];
 
-  // Insert Assessments after Home if user is Org Member
   if (isOrgMember) {
       navItems.splice(1, 0, { href: '/dashboard/assessments', label: 'Assessments', icon: CalendarCheck });
   }
@@ -69,7 +68,10 @@ export function StudentNav({ isPro, isOrgMember, orgName }: StudentNavProps) {
         ))}
       </nav>
 
-      <div className="p-4 border-t bg-slate-50/50">
+      <div className="p-4 border-t bg-slate-50/50 space-y-2">
+        {/* PWA Install Button (Only shows if installable) */}
+        <InstallPrompt />
+
         {/* --- UPGRADE CARD (Hide if Pro OR Org Member) --- */}
         {!isPro && !isOrgMember && (
             <Card className="bg-gradient-to-br from-blue-600 to-indigo-600 border-none shadow-md mb-4 overflow-hidden relative group">
@@ -102,22 +104,22 @@ export function StudentNav({ isPro, isOrgMember, orgName }: StudentNavProps) {
     </div>
   );
 
-  // Mobile Bottom Tab Bar (Unchanged)
+  // Mobile Bottom Tab Bar
   const BottomNav = () => (
-    <div className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t h-16 flex items-center justify-around z-50 pb-safe">
-      {navItems.map((item) => {
+    <div className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t h-16 flex items-center justify-around z-50 pb-safe px-2">
+      {navItems.slice(0, 5).map((item) => {
         const isActive = pathname === item.href;
         return (
           <Link
             key={item.href}
             href={item.href}
             className={cn(
-              "flex flex-col items-center justify-center w-full h-full space-y-1 active:scale-95 transition-transform",
+              "flex flex-col items-center justify-center w-full h-full space-y-1 active:scale-95 transition-transform min-w-[60px]",
               isActive ? "text-primary" : "text-muted-foreground/60 hover:text-muted-foreground"
             )}
           >
             <item.icon className={cn("w-5 h-5", isActive && "fill-current/20")} />
-            <span className="text-[10px] font-medium">{item.label}</span>
+            <span className="text-[10px] font-medium truncate w-full text-center">{item.label}</span>
           </Link>
         );
       })}
@@ -148,6 +150,25 @@ export function StudentNav({ isPro, isOrgMember, orgName }: StudentNavProps) {
            </SheetHeader>
            <div className="flex flex-col h-full mt-6">
              <nav className="space-y-2">
+                {navItems.map((item) => (
+                    <Button
+                        key={item.href}
+                        asChild
+                        variant={pathname === item.href ? 'secondary' : 'ghost'}
+                        className="w-full justify-start"
+                    >
+                        <Link href={item.href}>
+                        <item.icon className="w-4 h-4 mr-3" />
+                        {item.label}
+                        </Link>
+                    </Button>
+                ))}
+
+                <div className="my-4 border-t" />
+                
+                {/* Install Button in Mobile Menu */}
+                <InstallPrompt />
+
                 {!isPro && !isOrgMember && (
                    <Button asChild className="w-full justify-start bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 border-none">
                         <Link href="/dashboard/billing">
@@ -157,7 +178,7 @@ export function StudentNav({ isPro, isOrgMember, orgName }: StudentNavProps) {
                    </Button>
                 )}
                 {!isOrgMember && (
-                    <Button asChild variant="outline" className="w-full justify-start">
+                    <Button asChild variant="outline" className="w-full justify-start mt-2">
                         <Link href="/dashboard/billing">
                             <CreditCard className="w-4 h-4 mr-2" />
                             Manage Subscription
@@ -165,7 +186,7 @@ export function StudentNav({ isPro, isOrgMember, orgName }: StudentNavProps) {
                     </Button>
                 )}
                 {isOrgMember && orgName && (
-                    <div className="p-3 bg-muted rounded-lg text-sm text-center text-muted-foreground border border-dashed">
+                    <div className="p-3 bg-muted rounded-lg text-sm text-center text-muted-foreground border border-dashed mt-4">
                         Connected to <br/><span className="font-semibold text-foreground">{orgName}</span>
                     </div>
                 )}

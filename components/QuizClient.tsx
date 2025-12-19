@@ -16,25 +16,27 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import {
-  ChevronLeft, ChevronRight, Flag, Loader2, Timer, AlertCircle, Menu, BookOpen, Sparkles, Check, X
+  ChevronLeft, ChevronRight, Flag, Loader2, Timer, AlertCircle, Menu, BookOpen, Sparkles, Check, X, WifiOff
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import DOMPurify from 'isomorphic-dompurify'; 
 import { toast } from 'sonner';
+import { saveOfflineAttempt } from '@/lib/offline-storage';
 
 interface QuizClientProps {
   initialQuestions: SanitizedQuestion[];
   quizDetails: {
     examName: string;
     subjectName: string;
-    year: number;
+    year: number | string;
   };
-  mode: QuizMode;
+  mode: QuizMode | string;
   initialDuration: number; 
   assignmentId?: string; 
   userId: string; 
+  isOffline?: boolean;
 }
 
 function QuizTimer({ expiryTimestamp, onExpire }: { expiryTimestamp: Date; onExpire: () => void }) {
@@ -75,12 +77,12 @@ function SafeHTML({ html, className }: { html: string; className?: string }) {
   );
 }
 
-export function QuizClient({ initialQuestions, quizDetails, mode, initialDuration, assignmentId, userId }: QuizClientProps) {
+export function QuizClient({ initialQuestions, quizDetails, mode, initialDuration, assignmentId, userId, isOffline = false }: QuizClientProps) {
   const router = useRouter();
+  
   const {
     status, questions, currentIndex, answers, startTime, timeLimitMinutes,
     startQuiz, selectAnswer, goToQuestion, nextQuestion, prevQuestion, finishQuiz, resetQuiz, 
-    // Removed setIsSubmitting as it's not exported
   } = useQuizStore();
 
   const [isMounted, setIsMounted] = useState(false);
@@ -89,13 +91,17 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitDialogOpen, setIsSubmitDialogOpen] = useState(false);
   
+  // Offline Success Modal State
+  const [isOfflineSuccessOpen, setIsOfflineSuccessOpen] = useState(false);
+  const [offlineScore, setOfflineScore] = useState(0);
+
   const [theoryText, setTheoryText] = useState('');
   const [aiGrading, setAiGrading] = useState<any>(null);
   const [gradingLoading, setGradingLoading] = useState(false);
 
   useEffect(() => {
     const duration = initialDuration || 60; 
-    startQuiz(initialQuestions, mode);
+    startQuiz(initialQuestions, mode as QuizMode);
     useQuizStore.setState({ timeLimitMinutes: duration });
 
     const quizStartTime = new Date();
@@ -143,13 +149,56 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
   const handleSubmit = useCallback(async () => {
         if (isSubmitting) return;
         setLocalIsSubmitting(true);
-        // setIsSubmitting(true); // Removed causing error
         setSubmitError(null);
 
         try {
           const timeTaken = startTime ? Math.round((new Date().getTime() - startTime.getTime()) / 1000) : 0;
-          const questionIds = questions.map(q => q.id);
           const answersArray = Array.from(answers.entries());
+
+          // --- OFFLINE SUBMISSION BLOCK START ---
+          if (isOffline) {
+            let correctCount = 0;
+            let totalObjective = 0;
+
+            // Iterate over ALL questions to count total objectives
+            questions.forEach((question) => {
+                if (question.type === 'OBJECTIVE') {
+                totalObjective++;
+                
+                // Check if user answered this question
+                const userAnswer = answers.get(question.id);
+                if (userAnswer) {
+                    const options = (question as any).options || [];
+                    const selectedOption = options.find((opt: any) => opt.id === userAnswer);
+                    if (selectedOption?.isCorrect) {
+                    correctCount++;
+                    }
+                }
+                // If no answer, it's counted as incorrect (0 points)
+                }
+            });
+
+            const score = totalObjective > 0 
+                ? Math.round((correctCount / totalObjective) * 100) 
+                : 0;
+
+            await saveOfflineAttempt({
+                examKey: `${quizDetails.examName}-${quizDetails.subjectName}-${quizDetails.year}`,
+                answers: Array.from(answers.entries()), 
+                timeTaken,
+                score, 
+                userId
+            });
+
+            setOfflineScore(score);
+            setIsSubmitDialogOpen(false);
+            setIsOfflineSuccessOpen(true);
+            
+            return; 
+            }
+          // --- OFFLINE SUBMISSION BLOCK END ---
+
+          const questionIds = questions.map(q => q.id);
 
           const response = await fetch('/api/quiz/submit', {
             method: 'POST',
@@ -171,7 +220,11 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
           setLocalIsSubmitting(false);
           toast.error("Submission failed. Please try again.");
         }
-  }, [answers, questions, startTime, assignmentId, isSubmitting, router, quizDetails]);
+  }, [answers, questions, startTime, assignmentId, isSubmitting, router, quizDetails, isOffline, userId]);
+
+  const handleOfflineExit = () => {
+      router.push('/dashboard/offline');
+  };
 
   if (!isMounted || status === 'loading') {
     return (
@@ -195,7 +248,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
     );
   }
 
-  if (status === 'finished') {
+  if (status === 'finished' && !isOfflineSuccessOpen) {
       return (
         <div className="flex items-center justify-center min-h-screen flex-col">
             <Loader2 className="w-10 h-10 animate-spin text-primary" />
@@ -447,6 +500,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
         <NavigatorContent />
       </aside>
 
+      {/* Confirmation Dialog */}
       <Dialog open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
         <DialogContent>
             <DialogHeader>
@@ -461,6 +515,30 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
               <Button variant="destructive" onClick={handleSubmit}>Yes, Submit</Button>
             </DialogFooter>
         </DialogContent>
+      </Dialog>
+
+      {/* Offline Success Dialog */}
+      <Dialog open={isOfflineSuccessOpen} onOpenChange={setIsOfflineSuccessOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <WifiOff className="w-5 h-5 text-slate-500"/> 
+                Exam Completed Offline!
+              </DialogTitle>
+              <DialogDescription className="pt-2">
+                Your exam data has been saved locally on this device.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-100 flex flex-col items-center justify-center">
+                <span className="text-3xl font-bold text-green-600">{offlineScore}%</span>
+                <span className="text-xs text-muted-foreground mt-1">Approximate Objective Score</span>
+            </div>
+            <DialogFooter className="sm:justify-center">
+              <Button onClick={handleOfflineExit} className="w-full">
+                Go to Offline Dashboard
+              </Button>
+            </DialogFooter>
+          </DialogContent>
       </Dialog>
     </div>
   );
