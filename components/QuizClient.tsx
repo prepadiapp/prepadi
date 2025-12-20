@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useQuizStore, SanitizedQuestion, QuizMode } from '@/stores/quizStore';
 import { useTimer } from 'react-timer-hook';
 import { Button } from '@/components/ui/button';
@@ -33,9 +33,9 @@ interface QuizClientProps {
     year: number | string;
   };
   mode: QuizMode | string;
-  initialDuration: number; 
-  assignmentId?: string; 
-  userId: string; 
+  initialDuration: number;
+  assignmentId?: string | null; // Allow null
+  userId: string;
   isOffline?: boolean;
 }
 
@@ -160,34 +160,36 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
             let correctCount = 0;
             let totalObjective = 0;
 
-            // Iterate over ALL questions to count total objectives
+            // CORRECT SCORING LOGIC: Iterate over ALL questions to find total objective count
             questions.forEach((question) => {
-                if (question.type === 'OBJECTIVE') {
+              if (question.type === 'OBJECTIVE') {
                 totalObjective++;
                 
-                // Check if user answered this question
                 const userAnswer = answers.get(question.id);
+                // Only check correctness if user provided an answer
                 if (userAnswer) {
-                    const options = (question as any).options || [];
-                    const selectedOption = options.find((opt: any) => opt.id === userAnswer);
-                    if (selectedOption?.isCorrect) {
+                  const options = (question as any).options || [];
+                  const selectedOption = options.find((opt: any) => opt.id === userAnswer);
+                  if (selectedOption?.isCorrect) {
                     correctCount++;
-                    }
+                  }
                 }
-                // If no answer, it's counted as incorrect (0 points)
-                }
+              }
             });
 
+            // Calculate percentage based on TOTAL possible objective questions
             const score = totalObjective > 0 
-                ? Math.round((correctCount / totalObjective) * 100) 
-                : 0;
+              ? Math.round((correctCount / totalObjective) * 100) 
+              : 0;
 
             await saveOfflineAttempt({
-                examKey: `${quizDetails.examName}-${quizDetails.subjectName}-${quizDetails.year}`,
-                answers: Array.from(answers.entries()), 
-                timeTaken,
-                score, 
-                userId
+              examKey: `${quizDetails.examName}-${quizDetails.subjectName}-${quizDetails.year}`,
+              answers: Array.from(answers.entries()), 
+              timeTaken,
+              score, 
+              userId,
+              questionIds: questions.map(q => q.id), // NEW: Save ALL question IDs for sync
+              assignmentId: assignmentId || null, 
             });
 
             setOfflineScore(score);
@@ -195,7 +197,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
             setIsOfflineSuccessOpen(true);
             
             return; 
-            }
+          }
           // --- OFFLINE SUBMISSION BLOCK END ---
 
           const questionIds = questions.map(q => q.id);
@@ -371,6 +373,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
 
                 {currentQuestion.imageUrl && (
                     <div className="mb-4 rounded-lg overflow-hidden border border-slate-200">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img 
                             src={currentQuestion.imageUrl} 
                             alt="Question Diagram" 
@@ -500,7 +503,6 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
         <NavigatorContent />
       </aside>
 
-      {/* Confirmation Dialog */}
       <Dialog open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
         <DialogContent>
             <DialogHeader>

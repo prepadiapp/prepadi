@@ -114,7 +114,7 @@ function LoginForm() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Welcome Back!</CardTitle>
           <CardDescription>
-            Sign in to continue to PrepWave
+            Sign in to continue to Prepadi
           </CardDescription>
         </CardHeader>
         <CardContent>
