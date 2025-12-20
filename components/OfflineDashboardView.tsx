@@ -5,18 +5,17 @@ import { getAllOfflineExams, initDB } from '@/lib/offline-storage';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { WifiOff, Play, Trash2, Clock, ArrowLeft, Loader2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 
 interface Props {
     onBack?: () => void;
+    onStartExam?: (examData: any) => void; // Added callback
 }
 
-export function OfflineDashboardView({ onBack }: Props) {
+export function OfflineDashboardView({ onBack, onStartExam }: Props) {
   const [exams, setExams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
 
   const loadExams = async () => {
     try {
@@ -33,7 +32,8 @@ export function OfflineDashboardView({ onBack }: Props) {
     loadExams();
   }, []);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!confirm("Delete this downloaded exam?")) return;
     try {
         const db = await initDB();
@@ -45,14 +45,17 @@ export function OfflineDashboardView({ onBack }: Props) {
     }
   };
 
-  const handleStart = (id: string) => {
-      router.push(`/dashboard/offline/play/${id}`);
-  };
-
-  if (loading) return <div className="p-8 text-center"><Loader2 className="animate-spin inline mr-2"/>Loading downloads...</div>;
+  if (loading) {
+    return (
+        <div className="flex flex-col items-center justify-center p-20">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <p className="mt-4 text-slate-500">Loading downloads...</p>
+        </div>
+    );
+  }
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6 pb-24">
       <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-slate-100 rounded-full">
@@ -85,7 +88,7 @@ export function OfflineDashboardView({ onBack }: Props) {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {exams.map((exam) => (
-                <Card key={exam.id} className="hover:shadow-md transition-shadow bg-white">
+                <Card key={exam.id} className="hover:shadow-md transition-shadow bg-white cursor-default">
                     <CardHeader className="pb-3">
                         <CardTitle className="text-lg font-bold">{exam.title}</CardTitle>
                         <CardDescription>{exam.questions.length} Questions</CardDescription>
@@ -96,10 +99,13 @@ export function OfflineDashboardView({ onBack }: Props) {
                             Downloaded {formatDistanceToNow(exam.savedAt)} ago
                         </div>
                         <div className="flex gap-2">
-                            <Button className="flex-1" onClick={() => handleStart(exam.id)}>
+                            <Button 
+                                className="flex-1" 
+                                onClick={() => onStartExam?.(exam)} // Use callback
+                            >
                                 <Play className="w-4 h-4 mr-2" /> Start
                             </Button>
-                            <Button variant="outline" size="icon" onClick={() => handleDelete(exam.id)}>
+                            <Button variant="outline" size="icon" onClick={(e) => handleDelete(exam.id, e)}>
                                 <Trash2 className="w-4 h-4 text-red-500" />
                             </Button>
                         </div>
