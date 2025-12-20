@@ -8,9 +8,6 @@ const withPWA = require("next-pwa")({
   fallbacks: {
     document: "/offline", 
   },
-  cacheOnFrontEndNav: true,
-  reloadOnOnline: true,
-  swcMinify: true,
 });
 
 const nextConfig: NextConfig = {
