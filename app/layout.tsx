@@ -4,6 +4,8 @@ import "./globals.css";
 import Providers from "@/components/Providers"; 
 import { Toaster } from "sonner";
 import { UserActivityTracker } from "@/components/UserActivityTracker";
+import { PWARegister } from "@/components/PWARegister";
+import { SyncManager } from "@/components/SyncManager";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -17,7 +19,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
     title: "Prepadi",
   },
 };
@@ -36,10 +38,52 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${poppins.className} antialiased`}
-      >
+      <head>
+        {/* PWA Meta Tags */}
+        <meta name="application-name" content="Prepadi" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Prepadi" />
+        <meta name="format-detection" content="telephone=no" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        
+        {/* Apple Touch Icons */}
+        <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+        <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
+        <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512x512.png" />
+        
+        {/* Apple Splash Screens - Blue background */}
+        <link
+          rel="apple-touch-startup-image"
+          media="screen and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"
+          href="/splash/iphone-14-pro-max.png"
+        />
+        <link
+          rel="apple-touch-startup-image"
+          media="screen and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"
+          href="/splash/iphone-14-pro.png"
+        />
+        <link
+          rel="apple-touch-startup-image"
+          media="screen and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"
+          href="/splash/iphone-13-pro-max.png"
+        />
+        <link
+          rel="apple-touch-startup-image"
+          media="screen and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)"
+          href="/splash/iphone-13-pro.png"
+        />
+        
+        {/* Fallback splash */}
+        <link
+          rel="apple-touch-startup-image"
+          href="/splash/default.png"
+        />
+      </head>
+      <body className={`${poppins.className} antialiased`}>
         <Providers>
+          <PWARegister />
+          <SyncManager />
           <UserActivityTracker />
           <main className="min-h-screen bg-gray-50">
             {children}
