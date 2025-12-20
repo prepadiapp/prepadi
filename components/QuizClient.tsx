@@ -301,7 +301,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
   );
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50/50">
+    <div className="flex flex-col md:flex-row min-h-screen h-screen bg-slate-50 overflow-hidden">
       <div className="flex-1 flex flex-col p-3 md:p-4 max-w-4xl mx-auto w-full h-[calc(100vh-64px)] md:h-screen overflow-y-auto">
         <header className="flex flex-col gap-3 mb-3 md:mb-4 flex-shrink-0">
           <div className="flex justify-between items-start">
