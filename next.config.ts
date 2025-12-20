@@ -9,7 +9,6 @@ const withPWA = require("next-pwa")({
     document: "/offline", 
   },
   cacheOnFrontEndNav: true,
-  aggressiveFrontEndNavCaching: true,
   reloadOnOnline: true,
   swcMinify: true,
 });
