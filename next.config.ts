@@ -5,6 +5,13 @@ const withPWA = require("next-pwa")({
   register: true,
   skipWaiting: true,
   disable: process.env.NODE_ENV === "development", // Disable PWA in dev mode
+  fallbacks: {
+    document: "/offline", 
+  },
+  cacheOnFrontEndNav: true,
+  aggressiveFrontEndNavCaching: true,
+  reloadOnOnline: true,
+  swcMinify: true,
 });
 
 const nextConfig: NextConfig = {
