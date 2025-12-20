@@ -14,7 +14,7 @@ import { InstallPrompt } from '@/components/InstallPrompt'; // Import InstallPro
 const baseNavItems = [
   { href: '/dashboard', label: 'Home', icon: Home },
   { href: '/dashboard/practice', label: 'Practice', icon: BookOpen },
-  { href: '/dashboard/offline', label: 'Offline Exams', icon: WifiOff },
+  { href: '/dashboard/offline', label: 'Offline', icon: WifiOff },
   { href: '/dashboard/performance', label: 'Performance', icon: LineChart },
   { href: '/dashboard/profile', label: 'Profile', icon: User },
 ];

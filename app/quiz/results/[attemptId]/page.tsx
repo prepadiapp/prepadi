@@ -117,24 +117,39 @@ export default async function ResultsPage({ params }: { params: Promise<{ attemp
 
   // 2. Fetch User Subscription Status (For StudentNav)
   const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    include: { 
+      where: { id: session.user.id },
+      include: { 
         subscription: { include: { plan: true } },
-        ownedOrganization: { include: { subscription: { include: { plan: true } } } }
-    }
+        ownedOrganization: { include: { subscription: { include: { plan: true } } } },
+        organization: { include: { subscription: { include: { plan: true } } } } // Added this to check member org status
+      }
   });
 
   // Calculate isPro status
-  let activeSub = null;
-  if (user?.subscription?.isActive) activeSub = user.subscription;
-  else if (user?.ownedOrganization?.subscription?.isActive) activeSub = user.ownedOrganization.subscription;
+  const isOrgOwner = !!user?.ownedOrganization?.subscription?.isActive;
+  // Check if user is a member of an org (organizationId is not null) OR if that org has an active subscription
+  // Simply being in an org usually grants pro access in this context, or we check the org's sub.
+  const isOrgMember = !!user?.organizationId || !!user?.organization?.subscription?.isActive; 
+  const isUserPro = !!user?.subscription?.isActive;
+
+  // If user is part of an org (as member or owner) or has own sub, they are Pro
+  const isPro = isUserPro || isOrgOwner || isOrgMember;
+
+  // // Calculate isPro status
+  // let activeSub = null;
+  // if (user?.subscription?.isActive) activeSub = user.subscription;
+  // else if (user?.ownedOrganization?.subscription?.isActive) activeSub = user.ownedOrganization.subscription;
   
-  const isPro = (activeSub?.plan?.price || 0) > 0;
+  // const isPro = (activeSub?.plan?.price || 0) > 0;
 
   if (!attempt) {
     return (
       <div className="min-h-screen bg-slate-50/50 pb-20 md:pb-0">
-        <StudentNav isPro={isPro} />
+        <StudentNav 
+          isPro={isPro} 
+          isOrgMember={!!user?.organizationId} // Pass raw org membership status for "Connected to..." badge
+          orgName={user?.organization?.name}
+        />
         <main className="md:pl-64 min-h-screen transition-all p-4 md:p-8 flex items-center justify-center">
             <Alert variant="destructive" className="max-w-md bg-white shadow-lg">
             <AlertCircle className="h-4 w-4" />

@@ -19,15 +19,18 @@ export function SyncManager() {
 
       for (const attempt of pending) {
         try {
+          // Use questionIds from the attempt if available (new logic), 
+          // otherwise fallback to answers mapping (old/legacy data support)
+          const questionIds = (attempt as any).questionIds || attempt.answers.map((a: any) => a[0]);
+
           const res = await fetch('/api/quiz/submit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               answers: attempt.answers,
-              questionIds: attempt.answers.map((a: any) => a[0]), // Simplified, might need full Q IDs
+              questionIds: questionIds, 
               timeTaken: attempt.timeTaken,
-              // We need to pass context if it was an assignment or practice
-              // Ideally store this in attempt object
+              assignmentId: (attempt as any).assignmentId, // Also include assignmentId if present
             }),
           });
 
