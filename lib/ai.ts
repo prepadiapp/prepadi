@@ -4,7 +4,7 @@ const apiKey = process.env.GEMINI_API_KEY;
 const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 // Use the preview model available in the environment
-const MODEL_NAME = "gemini-2.5-flash-preview-09-2025";
+const MODEL_NAME = "gemini-2.0-flash";
 
 const GENERATION_CONFIG = {
   temperature: 0.5, // Lower temperature for more consistent formatting

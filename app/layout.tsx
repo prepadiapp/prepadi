@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Poppins } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/Providers"; 
 import { Toaster } from "sonner";
@@ -7,10 +7,10 @@ import { UserActivityTracker } from "@/components/UserActivityTracker";
 import { PWARegister } from "@/components/PWARegister";
 import { SyncManager } from "@/components/SyncManager";
 
-const poppins = Poppins({
+const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
-  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-  variable: "--font-poppins",
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-plus-jakarta",
 });
 
 export const metadata: Metadata = {
@@ -80,7 +80,7 @@ export default function RootLayout({
           href="/splash/default.png"
         />
       </head>
-      <body className={`${poppins.className} antialiased`}>
+      <body className={`${plusJakartaSans.className} antialiased`}>
         <Providers>
           <PWARegister />
           <SyncManager />
