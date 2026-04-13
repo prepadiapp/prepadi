@@ -30,7 +30,17 @@ export const PaymentService = {
   /**
    * Creates a pending order in the database
    */
-  createOrder: async (userId: string, planId: string, amount: number, reference: string) => {
+  createOrder: async (
+    userId: string,
+    planId: string,
+    amount: number,
+    reference: string,
+    options?: {
+      pricingInterval?: PlanInterval | null;
+      seatCount?: number | null;
+      quoteSnapshot?: unknown;
+    }
+  ) => {
     return prisma.order.create({
       data: {
         userId,
@@ -39,6 +49,9 @@ export const PaymentService = {
         currency: 'NGN',
         status: OrderStatus.PENDING,
         reference,
+        pricingInterval: options?.pricingInterval ?? null,
+        seatCount: options?.seatCount ?? null,
+        quoteSnapshot: options?.quoteSnapshot ?? undefined,
       },
     });
   },
@@ -118,11 +131,22 @@ export const PaymentService = {
           // It's an Organization Plan. We need to find the Org owned by this user.
           const org = await tx.organization.findUnique({
             where: { ownerId: order.userId },
+            include: {
+              subscription: true,
+            },
           });
           
           if (org) {
             console.log(`[PaymentService] Organization found: ${org.id}. Upserting subscription...`);
-            await tx.subscription.upsert({
+            const orgQuote = order.quoteSnapshot as
+              | {
+                  interval?: PlanInterval;
+                  seatCount?: number;
+                  selectedExamIds?: string[];
+                }
+              | null;
+
+            const subscription = await tx.subscription.upsert({
               where: { organizationId: org.id },
               create: {
                 organizationId: org.id,
@@ -130,14 +154,36 @@ export const PaymentService = {
                 startDate: new Date(),
                 endDate: endDate,
                 isActive: true,
+                pricingInterval: order.pricingInterval ?? orgQuote?.interval ?? order.plan.interval,
+                seatCount: order.seatCount ?? orgQuote?.seatCount ?? null,
+                quoteSnapshot: order.quoteSnapshot ?? undefined,
               },
               update: {
                 planId: order.planId,
                 startDate: new Date(), // Renew start date
                 endDate: endDate,      // Extend end date
                 isActive: true,
+                pricingInterval: order.pricingInterval ?? orgQuote?.interval ?? order.plan.interval,
+                seatCount: order.seatCount ?? orgQuote?.seatCount ?? null,
+                quoteSnapshot: order.quoteSnapshot ?? undefined,
               },
             });
+
+            if (orgQuote?.selectedExamIds) {
+              await tx.subscriptionExamAccess.deleteMany({
+                where: { subscriptionId: subscription.id },
+              });
+
+              if (orgQuote.selectedExamIds.length > 0) {
+                await tx.subscriptionExamAccess.createMany({
+                  data: orgQuote.selectedExamIds.map((examId) => ({
+                    subscriptionId: subscription.id,
+                    examId,
+                  })),
+                  skipDuplicates: true,
+                });
+              }
+            }
           } else {
              console.error(`[PaymentService] Organization NOT found for owner: ${order.userId}`);
              throw new Error('Organization not found for user');

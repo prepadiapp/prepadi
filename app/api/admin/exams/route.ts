@@ -34,7 +34,16 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { name, shortName, description } = body;
+    const {
+      name,
+      shortName,
+      description,
+      pricingCategory,
+      monthlyFlatFee,
+      yearlyFlatFee,
+      monthlyPerStudentFee,
+      yearlyPerStudentFee,
+    } = body;
 
     if (!name || !shortName) {
       return new NextResponse('Missing required fields', { status: 400 });
@@ -45,6 +54,11 @@ export async function POST(request: Request) {
         name,
         shortName: shortName.toUpperCase(),
         description,
+        pricingCategory,
+        monthlyFlatFee: Number(monthlyFlatFee || 0),
+        yearlyFlatFee: Number(yearlyFlatFee || 0),
+        monthlyPerStudentFee: Number(monthlyPerStudentFee || 0),
+        yearlyPerStudentFee: Number(yearlyPerStudentFee || 0),
       },
     });
     return NextResponse.json(newExam);

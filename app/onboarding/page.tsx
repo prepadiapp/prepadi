@@ -11,6 +11,14 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, Building, GraduationCap, ArrowLeft, Check, XCircle } from "lucide-react";
 import { useSession } from 'next-auth/react';
 
+import dynamic from 'next/dynamic';
+import type { OrgPricingSelectionState } from '@/components/billing/OrganizationPricingConfigurator';
+const OrganizationPricingConfigurator = dynamic(
+  () => import('@/components/billing/OrganizationPricingConfigurator')
+   .then(mod => mod.OrganizationPricingConfigurator),
+  { ssr: false }
+);
+
 export default function OnboardingPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -18,6 +26,8 @@ export default function OnboardingPage() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.STUDENT);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [orgPricingSelection, setOrgPricingSelection] = useState<OrgPricingSelectionState | null>(null);
+  const [orgQuote, setOrgQuote] = useState<any>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [orgName, setOrgName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,7 +47,7 @@ export default function OnboardingPage() {
 
   // Fetch Plans
   useEffect(() => {
-    if (step === 2) {
+    if (step === 2 && selectedRole === UserRole.STUDENT) {
       const type = selectedRole === 'STUDENT' ? 'STUDENT' : 'ORGANIZATION';
       setLoading(true);
       fetch(`/api/public/plans?type=${type}`)
@@ -67,6 +77,7 @@ export default function OnboardingPage() {
         body: JSON.stringify({
           role: selectedRole,
           planId: selectedPlan?.id,
+          orgPricingSelection: selectedRole === UserRole.ORGANIZATION ? orgPricingSelection : undefined,
           orgName: selectedRole === 'ORGANIZATION' ? orgName : undefined,
         }),
       });
@@ -185,6 +196,30 @@ export default function OnboardingPage() {
 
   // Step 2: Plan Selection
   if (step === 2) {
+    if (selectedRole === UserRole.ORGANIZATION) {
+      return (
+        <div className="min-h-screen bg-muted/20 px-4 py-8">
+          <div className="mx-auto max-w-7xl space-y-6">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" onClick={() => setStep(1)}><ArrowLeft className="w-4 h-4" /></Button>
+              <h1 className="text-2xl font-bold">Choose your organization setup</h1>
+            </div>
+
+            <OrganizationPricingConfigurator
+              mode="select"
+              ctaLabel="Use this configuration"
+              onContinue={(selection, quote) => {
+                setOrgPricingSelection(selection);
+                setOrgQuote(quote);
+                setSelectedPlan({ id: quote.planId, name: quote.planName } as Plan);
+                setStep(3);
+              }}
+            />
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-muted/20 p-4">
         <div className="max-w-5xl w-full space-y-8">
@@ -247,6 +282,23 @@ export default function OnboardingPage() {
               <Input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="e.g. My Academy" />
             </div>
           )}
+
+          {selectedRole === UserRole.ORGANIZATION && orgQuote ? (
+            <div className="rounded-2xl border border-[color:var(--primary-border)] bg-[color:var(--primary-soft)] p-4">
+              <p className="text-sm font-medium text-[color:var(--primary-ink)]">Selected pricing</p>
+              <div className="mt-2 flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-lg font-semibold text-slate-950">{orgQuote.planName}</p>
+                  <p className="text-sm text-slate-600">
+                    {orgQuote.seatCount} students • {orgQuote.interval.toLowerCase()}
+                  </p>
+                </div>
+                <p className="text-2xl font-semibold text-slate-950">
+                  {`N${orgQuote.amount.toLocaleString()}`}
+                </p>
+              </div>
+            </div>
+          ) : null}
           
           <div className="p-4 bg-muted rounded-lg">
             <p className="text-sm font-medium">Plan: {selectedPlan?.name}</p>

@@ -27,9 +27,9 @@ export async function verifyUserAccess(
     where: { id: userId },
     include: {
       subscription: { include: { plan: true } },
-      ownedOrganization: { include: { subscription: { include: { plan: true } } } },
+      ownedOrganization: { include: { subscription: { include: { plan: true, selectedExams: true } } } },
       // Include the organization the user is a MEMBER of
-      organization: { include: { subscription: { include: { plan: true } } } }
+      organization: { include: { subscription: { include: { plan: true, selectedExams: true } } } }
     }
   });
 
@@ -68,6 +68,10 @@ export async function verifyUserAccess(
 
   // --- 2. Determine Active Subscription (Direct > Owned Org > Member Org) ---
   let activeSub = null;
+  const orgSelectedExamIds =
+    user.ownedOrganization?.subscription?.selectedExams?.map((selection) => selection.examId) ||
+    user.organization?.subscription?.selectedExams?.map((selection) => selection.examId) ||
+    [];
   
   if (user.subscription && user.subscription.isActive) {
      activeSub = user.subscription;
@@ -87,6 +91,19 @@ export async function verifyUserAccess(
   }
 
   const features = activeSub.plan.features as any;
+
+  if (activeSub.organizationId) {
+    if (context.examId && orgSelectedExamIds.length > 0 && !orgSelectedExamIds.includes(context.examId)) {
+      return { allowed: false, reason: "Exam not included in your organization's current subscription." };
+    }
+
+    if (context.examId && orgSelectedExamIds.length === 0) {
+      return { allowed: false, reason: "Your organization has not selected any exams yet." };
+    }
+
+    return { allowed: true };
+  }
+
   if (!features) return { allowed: true }; // No features defined = unrestricted
 
   // --- 3. Check Plan Constraints ---
@@ -133,8 +150,8 @@ export async function getUserPlanFilters(userId: string) {
     where: { id: userId },
     include: {
       subscription: { include: { plan: true } },
-      ownedOrganization: { include: { subscription: { include: { plan: true } } } },
-      organization: { include: { subscription: { include: { plan: true } } } }
+      ownedOrganization: { include: { subscription: { include: { plan: true, selectedExams: true } } } },
+      organization: { include: { subscription: { include: { plan: true, selectedExams: true } } } }
     }
   });
 
@@ -144,6 +161,19 @@ export async function getUserPlanFilters(userId: string) {
   else if (user?.organization?.subscription?.isActive) activeSub = user.organization.subscription;
 
   if (!activeSub) return { allowedExamIds: [], allowedSubjectIds: [], allowedYears: [] }; // Block all
+
+  if (activeSub.organizationId) {
+    const selectedExamIds =
+      user?.ownedOrganization?.subscription?.selectedExams?.map((selection) => selection.examId) ||
+      user?.organization?.subscription?.selectedExams?.map((selection) => selection.examId) ||
+      [];
+
+    return {
+      allowedExamIds: selectedExamIds,
+      allowedSubjectIds: undefined,
+      allowedYears: undefined,
+    };
+  }
 
   const features = activeSub.plan.features as any;
   

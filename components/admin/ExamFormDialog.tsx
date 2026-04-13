@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Exam } from '@prisma/client'; 
+import { Exam, ExamPricingCategory } from '@prisma/client'; 
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface ExamFormDialogProps {
   open: boolean;
@@ -28,6 +29,11 @@ export function ExamFormDialog({ open, onOpenChange, exam, onSave }: ExamFormDia
   const [name, setName] = useState('');
   const [shortName, setShortName] = useState('');
   const [description, setDescription] = useState('');
+  const [pricingCategory, setPricingCategory] = useState<ExamPricingCategory>(ExamPricingCategory.BASE);
+  const [monthlyFlatFee, setMonthlyFlatFee] = useState(0);
+  const [yearlyFlatFee, setYearlyFlatFee] = useState(0);
+  const [monthlyPerStudentFee, setMonthlyPerStudentFee] = useState(0);
+  const [yearlyPerStudentFee, setYearlyPerStudentFee] = useState(0);
   const [loading, setLoading] = useState(false);
 
   // When the dialog opens, populate the form if we are editing
@@ -36,11 +42,21 @@ export function ExamFormDialog({ open, onOpenChange, exam, onSave }: ExamFormDia
       setName(exam.name);
       setShortName(exam.shortName);
       setDescription(exam.description || '');
+      setPricingCategory(exam.pricingCategory);
+      setMonthlyFlatFee(exam.monthlyFlatFee);
+      setYearlyFlatFee(exam.yearlyFlatFee);
+      setMonthlyPerStudentFee(exam.monthlyPerStudentFee);
+      setYearlyPerStudentFee(exam.yearlyPerStudentFee);
     } else if (open && !exam) {
       // Reset form for "Add New"
       setName('');
       setShortName('');
       setDescription('');
+      setPricingCategory(ExamPricingCategory.BASE);
+      setMonthlyFlatFee(0);
+      setYearlyFlatFee(0);
+      setMonthlyPerStudentFee(0);
+      setYearlyPerStudentFee(0);
     }
   }, [open, exam]);
 
@@ -62,6 +78,11 @@ export function ExamFormDialog({ open, onOpenChange, exam, onSave }: ExamFormDia
           name,
           shortName: shortName.toUpperCase(),
           description,
+          pricingCategory,
+          monthlyFlatFee,
+          yearlyFlatFee,
+          monthlyPerStudentFee,
+          yearlyPerStudentFee,
         }),
       });
 
@@ -81,7 +102,7 @@ export function ExamFormDialog({ open, onOpenChange, exam, onSave }: ExamFormDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[560px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{exam ? 'Edit Exam' : 'Add New Exam'}</DialogTitle>
@@ -120,6 +141,58 @@ export function ExamFormDialog({ open, onOpenChange, exam, onSave }: ExamFormDia
                 placeholder="A short description of the exam."
               />
             </div>
+
+            <div className="space-y-2">
+              <Label>Pricing Category</Label>
+              <Select value={pricingCategory} onValueChange={(value) => setPricingCategory(value as ExamPricingCategory)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ExamPricingCategory.BASE}>Base</SelectItem>
+                  <SelectItem value={ExamPricingCategory.SPECIAL}>Special</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {pricingCategory === ExamPricingCategory.SPECIAL && (
+              <div className="grid grid-cols-2 gap-4 rounded-xl border border-[color:var(--primary-border)] bg-[color:var(--primary-soft)] p-4">
+                <div className="space-y-2">
+                  <Label htmlFor="monthlyFlatFee">Monthly Flat Fee</Label>
+                  <Input
+                    id="monthlyFlatFee"
+                    type="number"
+                    value={monthlyFlatFee}
+                    onChange={(e) => setMonthlyFlatFee(Number(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="yearlyFlatFee">Yearly Flat Fee</Label>
+                  <Input
+                    id="yearlyFlatFee"
+                    type="number"
+                    value={yearlyFlatFee}
+                    onChange={(e) => setYearlyFlatFee(Number(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="monthlyPerStudentFee">Monthly Per Student</Label>
+                  <Input
+                    id="monthlyPerStudentFee"
+                    type="number"
+                    value={monthlyPerStudentFee}
+                    onChange={(e) => setMonthlyPerStudentFee(Number(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="yearlyPerStudentFee">Yearly Per Student</Label>
+                  <Input
+                    id="yearlyPerStudentFee"
+                    type="number"
+                    value={yearlyPerStudentFee}
+                    onChange={(e) => setYearlyPerStudentFee(Number(e.target.value))}
+                  />
+                </div>
+              </div>
+            )}
           </div>
           
           <DialogFooter>

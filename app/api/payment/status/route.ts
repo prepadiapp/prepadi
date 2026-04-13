@@ -62,12 +62,21 @@ export async function GET(request: Request) {
   
   let needsPayment = false;
   let statusMessage = "";
+  let requiresOrgPlanRefresh = false;
 
   if (subscription) {
     const isPaidPlan = subscription.plan.price > 0;
     const hasExpired = subscription.endDate ? new Date(subscription.endDate) < new Date() : false;
+    const isLegacyOrgSubscription =
+      subscription.organizationId &&
+      (!subscription.quoteSnapshot || !subscription.seatCount || !subscription.pricingInterval);
     
-    if (isPaidPlan && (!subscription.isActive || hasExpired)) {
+    if (isLegacyOrgSubscription) {
+       requiresOrgPlanRefresh = true;
+       needsPayment = false;
+       missingSubscription = false;
+       statusMessage = "Your organization needs to choose a new pricing configuration before access can continue.";
+    } else if (isPaidPlan && (!subscription.isActive || hasExpired)) {
        needsPayment = true;
        if (isOrgMember) {
            statusMessage = "Your organization's subscription has expired. Please contact your administrator.";
@@ -88,6 +97,7 @@ export async function GET(request: Request) {
     role: userRole,
     missingSubscription,
     needsPayment,
+    requiresOrgPlanRefresh,
     planId: subscription?.planId,
     isNewUser,
     isOrgMember,

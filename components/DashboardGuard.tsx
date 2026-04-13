@@ -64,6 +64,20 @@ export function DashboardGuard({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      if (data.requiresOrgPlanRefresh) {
+        if (data.role === 'ORGANIZATION') {
+          router.push('/organization/billing');
+          return;
+        }
+        setIsLocked(true);
+        setPendingPlanId(data.planId);
+        setIsNewUser(false);
+        setIsOrgMember(Boolean(data.isOrgMember));
+        setStatusMessage(data.statusMessage || "Your organization needs a new pricing configuration.");
+        setChecking(false);
+        return;
+      }
+
       // 3. PAYMENT CHECK
       if (data.needsPayment) {
         setIsLocked(true);
