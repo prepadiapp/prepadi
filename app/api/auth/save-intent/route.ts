@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { planId, role, orgName, inviteToken, skipPlan } = body;
+    const { planId, role, orgName, inviteToken, skipPlan, orgPricingSelection } = body;
 
     const response = NextResponse.json({ success: true });
 
@@ -13,7 +13,8 @@ export async function POST(request: Request) {
       role, 
       orgName, 
       inviteToken,
-      skipPlan // Added
+      skipPlan,
+      orgPricingSelection,
     }), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

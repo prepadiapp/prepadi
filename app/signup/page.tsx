@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Plan, UserRole } from '@prisma/client'; 
+import { OrganizationPricingConfigurator, OrgPricingSelectionState } from '@/components/billing/OrganizationPricingConfigurator';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,8 @@ function SignupContent() {
   const [step, setStep] = useState<1 | 2 | 3>(1); 
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.STUDENT);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [orgPricingSelection, setOrgPricingSelection] = useState<OrgPricingSelectionState | null>(null);
+  const [orgQuote, setOrgQuote] = useState<any>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   
   const [name, setName] = useState('');
@@ -60,7 +63,7 @@ function SignupContent() {
 
   // --- Logic: Fetch Plans (Only if needed) ---
   useEffect(() => {
-    if (step === 2 && !inviteToken && flow !== 'general_join') {
+    if (step === 2 && selectedRole === UserRole.STUDENT && !inviteToken && flow !== 'general_join') {
       const type = selectedRole === UserRole.STUDENT ? 'STUDENT' : 'ORGANIZATION';
       setLoading(true);
       fetch(`/api/public/plans?type=${type}`)
@@ -101,6 +104,7 @@ function SignupContent() {
           password,
           role: selectedRole,
           planId: selectedPlan?.id, 
+          orgPricingSelection: selectedRole === UserRole.ORGANIZATION ? orgPricingSelection : undefined,
           orgName: selectedRole === UserRole.ORGANIZATION ? orgName : undefined,
           inviteToken,
           skipPlan, // New flag for general join flow
@@ -160,7 +164,8 @@ function SignupContent() {
           role: selectedRole,
           orgName: selectedRole === 'ORGANIZATION' ? orgName : undefined,
           inviteToken,
-          skipPlan // Pass flag to intent
+          skipPlan, // Pass flag to intent
+          orgPricingSelection: selectedRole === UserRole.ORGANIZATION ? orgPricingSelection : undefined,
         }),
       });
 
@@ -222,6 +227,30 @@ function SignupContent() {
 
   // STEP 2: Plan Selection
   if (step === 2) {
+    if (selectedRole === UserRole.ORGANIZATION) {
+      return (
+        <div className="min-h-screen bg-muted/20 px-4 py-8">
+          <div className="mx-auto max-w-7xl space-y-6">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="icon" onClick={() => setStep(1)}><ArrowLeft className="w-5 h-5" /></Button>
+              <h1 className="text-3xl font-bold">Choose your organization setup</h1>
+            </div>
+
+            <OrganizationPricingConfigurator
+              mode="select"
+              ctaLabel="Use this configuration"
+              onContinue={(selection, quote) => {
+                setOrgPricingSelection(selection);
+                setOrgQuote(quote);
+                setSelectedPlan({ id: quote.planId, name: quote.planName } as Plan);
+                setStep(3);
+              }}
+            />
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-muted/20 p-4">
         <div className="max-w-5xl w-full space-y-8">
@@ -297,7 +326,7 @@ function SignupContent() {
             {error && <Alert variant="destructive" className="mb-4"><AlertDescription>{error}</AlertDescription></Alert>}
 
             <form onSubmit={handleFinalSubmit} className="space-y-4">
-              {selectedRole === UserRole.ORGANIZATION && (
+            {selectedRole === UserRole.ORGANIZATION && (
                 <div className="space-y-2">
                   <Label htmlFor="orgName">Organization Name</Label>
                   <Input id="orgName" value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="e.g. Great Heights Academy" required />
@@ -311,6 +340,23 @@ function SignupContent() {
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required disabled={!!inviteEmail} />
               </div>
+
+              {selectedRole === UserRole.ORGANIZATION && orgQuote ? (
+                <div className="rounded-2xl border border-[color:var(--primary-border)] bg-[color:var(--primary-soft)] p-4">
+                  <p className="text-sm font-medium text-[color:var(--primary-ink)]">Selected pricing</p>
+                  <div className="mt-2 flex items-end justify-between gap-4">
+                    <div>
+                      <p className="text-lg font-semibold text-slate-950">{orgQuote.planName}</p>
+                      <p className="text-sm text-slate-600">
+                        {orgQuote.seatCount} students • {orgQuote.interval.toLowerCase()}
+                      </p>
+                    </div>
+                    <p className="text-2xl font-semibold text-slate-950">
+                      {`N${orgQuote.amount.toLocaleString()}`}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
 
               {/* <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
@@ -356,7 +402,12 @@ function SignupContent() {
               <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or continue with</span></div>
             </div>
 
-            <Button variant="outline" className="w-full" onClick={initiateGoogleSignup} disabled={loading || (!selectedPlan && !isJoinFlow)}>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={initiateGoogleSignup}
+              disabled={loading || ((!selectedPlan || (selectedRole === UserRole.ORGANIZATION && !orgPricingSelection)) && !isJoinFlow)}
+            >
               <GoogleIcon className="mr-2" />
               Sign Up with Google
             </Button>

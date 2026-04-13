@@ -3,8 +3,9 @@ import GoogleProvider from 'next-auth/providers/google';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { PrismaAdapter } from '@next-auth/prisma-adapter';
 import { prisma } from '@/lib/prisma';
+import { buildOrgPricingQuote, isSupportedOrgInterval } from '@/lib/org-pricing';
 import bcrypt from 'bcryptjs';
-import { UserRole, PlanInterval } from '@prisma/client';
+import { UserRole, PlanInterval, PlanType } from '@prisma/client';
 import { cookies } from 'next/headers';
 
 // Helper for date calculation
@@ -128,7 +129,7 @@ export const authOptions: NextAuthOptions = {
 
           if (intentCookie) {
             const intent = JSON.parse(intentCookie.value);
-            const { planId, role, orgName, inviteToken, skipPlan } = intent;
+            const { planId, role, orgName, inviteToken, skipPlan, orgPricingSelection } = intent;
 
             const dbUser = await prisma.user.findUnique({ 
               where: { id: user.id },
@@ -173,9 +174,50 @@ export const authOptions: NextAuthOptions = {
             const hasOrgSub = !!dbUser.ownedOrganization?.subscription;
 
             if (!hasUserSub && !hasOrgSub && planId) {
-               const plan = await prisma.plan.findUnique({ where: { id: planId } });
+               const plan = await prisma.plan.findUnique({
+                 where: { id: planId },
+                 include: {
+                   seatBands: {
+                     orderBy: { minSeats: 'asc' },
+                   },
+                 },
+               });
                
                if (plan) {
+                 let orgQuote:
+                   | ReturnType<typeof buildOrgPricingQuote>
+                   | null = null;
+
+                 if (role === UserRole.ORGANIZATION) {
+                    if (!orgPricingSelection || !isSupportedOrgInterval(orgPricingSelection.interval)) {
+                        throw new Error("Missing organization pricing configuration for Google signup");
+                    }
+
+                    if (plan.type !== PlanType.ORGANIZATION || !plan.orgPricingEnabled) {
+                        throw new Error("Selected plan is not configured for organization pricing");
+                    }
+
+                    const exams = await prisma.exam.findMany({
+                      where: { organizationId: null },
+                    });
+
+                    orgQuote = buildOrgPricingQuote({
+                      plan,
+                      exams,
+                      selection: {
+                        planId: orgPricingSelection.planId,
+                        interval: orgPricingSelection.interval,
+                        seatCount: Number(orgPricingSelection.seatCount),
+                        baseExamIds: orgPricingSelection.baseExamIds || [],
+                        specialExamIds: orgPricingSelection.specialExamIds || [],
+                      },
+                    });
+
+                    if (orgQuote.contactSales) {
+                      throw new Error("This seat range requires contacting sales.");
+                    }
+                 }
+
                  await prisma.$transaction(async (tx) => {
                     if (dbUser.role !== role) {
                         await tx.user.update({
@@ -203,21 +245,38 @@ export const authOptions: NextAuthOptions = {
                       }
                     }
 
-                    const isPaid = plan.price > 0;
+                    const isPaid = role === UserRole.ORGANIZATION ? (orgQuote?.amount || 0) > 0 : plan.price > 0;
                     const userIdToLink = role === UserRole.STUDENT ? dbUser.id : null;
                     const orgIdToLink = role === UserRole.ORGANIZATION ? orgId : null;
+                    const effectiveInterval =
+                      role === UserRole.ORGANIZATION
+                        ? (orgQuote?.interval ?? PlanInterval.MONTHLY)
+                        : plan.interval;
 
                     if (userIdToLink || orgIdToLink) {
-                        await tx.subscription.create({
+                        const subscription = await tx.subscription.create({
                             data: {
                                 planId: plan.id,
                                 startDate: new Date(),
-                                endDate: calculateEndDate(plan.interval),
+                                endDate: calculateEndDate(effectiveInterval),
                                 isActive: !isPaid,
                                 userId: userIdToLink,
                                 organizationId: orgIdToLink,
+                                pricingInterval: role === UserRole.ORGANIZATION ? effectiveInterval : null,
+                                seatCount: role === UserRole.ORGANIZATION ? orgQuote?.seatCount : null,
+                                quoteSnapshot: role === UserRole.ORGANIZATION ? (orgQuote as unknown as object) : undefined,
                             },
                         });
+
+                        if (role === UserRole.ORGANIZATION && orgQuote && orgQuote.selectedExamIds.length > 0) {
+                          await tx.subscriptionExamAccess.createMany({
+                            data: orgQuote.selectedExamIds.map((examId) => ({
+                              subscriptionId: subscription.id,
+                              examId,
+                            })),
+                            skipDuplicates: true,
+                          });
+                        }
                     }
                  });
                }

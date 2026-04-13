@@ -153,9 +153,15 @@ model Plan {
   interval      PlanInterval 
   type          PlanType 
   features      Json 
+  marketingBullets Json?
+  maxBaseExamSelections Int?
+  allowsSpecialExams Boolean @default(false)
+  canCreateCustomExams Boolean @default(false)
+  orgPricingEnabled Boolean @default(false)
   isActive      Boolean  @default(true)
   subscriptions Subscription[]
   orders        Order[]
+  seatBands     OrgPlanSeatBand[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
@@ -172,6 +178,10 @@ model Subscription {
   endDate        DateTime? 
   isActive       Boolean  @default(true)
   providerSubId  String?  
+  pricingInterval PlanInterval?
+  seatCount      Int?
+  quoteSnapshot  Json?
+  selectedExams  SubscriptionExamAccess[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
@@ -187,6 +197,9 @@ model Order {
   status         OrderStatus @default(PENDING)
   reference      String      @unique 
   transaction    Transaction?
+  pricingInterval PlanInterval?
+  seatCount      Int?
+  quoteSnapshot  Json?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 }
@@ -218,6 +231,11 @@ model Exam {
   description String?
   duration    Int      @default(45) // Duration in minutes
   apiAliases  Json?    
+  pricingCategory ExamPricingCategory @default(BASE)
+  monthlyFlatFee Int @default(0)
+  yearlyFlatFee Int @default(0)
+  monthlyPerStudentFee Int @default(0)
+  yearlyPerStudentFee Int @default(0)
   
   organizationId String?       
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -227,6 +245,34 @@ model Exam {
   
   // NEW: Relation
   examPapers  ExamPaper[]
+  subscriptionSelections SubscriptionExamAccess[]
+}
+
+model OrgPlanSeatBand {
+  id                String   @id @default(cuid())
+  planId            String
+  plan              Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  minSeats          Int
+  maxSeats          Int?
+  monthlyPerStudent Int
+  yearlyPerStudent  Int
+  isContactSales    Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([planId])
+}
+
+model SubscriptionExamAccess {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  examId         String
+  exam           Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([subscriptionId, examId])
+  @@index([examId])
 }
 
 model Subject {
@@ -472,4 +518,9 @@ enum RequestStatus {
 enum AttemptStatus {
   IN_PROGRESS
   COMPLETED
+}
+
+enum ExamPricingCategory {
+  BASE
+  SPECIAL
 }

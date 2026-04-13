@@ -15,7 +15,25 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, description, price, interval, type, features, isActive } = body;
+    const {
+      name,
+      description,
+      price,
+      interval,
+      type,
+      features,
+      isActive,
+      marketingBullets,
+      maxBaseExamSelections,
+      allowsSpecialExams,
+      canCreateCustomExams,
+      orgPricingEnabled,
+      seatBands,
+    } = body;
+
+    await prisma.orgPlanSeatBand.deleteMany({
+      where: { planId: id },
+    });
 
     const updatedPlan = await prisma.plan.update({
       where: { id },
@@ -27,6 +45,31 @@ export async function PATCH(
         type,
         features,
         isActive,
+        marketingBullets: marketingBullets || undefined,
+        maxBaseExamSelections:
+          maxBaseExamSelections === null || maxBaseExamSelections === undefined || maxBaseExamSelections === ''
+            ? null
+            : Number(maxBaseExamSelections),
+        allowsSpecialExams: Boolean(allowsSpecialExams),
+        canCreateCustomExams: Boolean(canCreateCustomExams),
+        orgPricingEnabled: Boolean(orgPricingEnabled),
+        seatBands: Array.isArray(seatBands) && seatBands.length > 0
+          ? {
+              create: seatBands.map((band: any) => ({
+                minSeats: Number(band.minSeats),
+                maxSeats:
+                  band.maxSeats === null || band.maxSeats === undefined || band.maxSeats === ''
+                    ? null
+                    : Number(band.maxSeats),
+                monthlyPerStudent: Number(band.monthlyPerStudent || 0),
+                yearlyPerStudent: Number(band.yearlyPerStudent || 0),
+                isContactSales: Boolean(band.isContactSales),
+              })),
+            }
+          : undefined,
+      },
+      include: {
+        seatBands: true,
       },
     });
 

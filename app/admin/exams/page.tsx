@@ -16,6 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, Loader2, Plus, Trash2, Edit } from 'lucide-react';
 import { ExamFormDialog } from '@/components/admin/ExamFormDialog'; 
 import { Toaster, toast } from 'sonner'; 
+import { Badge } from '@/components/ui/badge';
 
 export default function ManageExamsPage() {
   const [exams, setExams] = useState<Exam[]>([]);
@@ -122,7 +123,9 @@ export default function ManageExamsPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Short Name</TableHead>
+                  <TableHead>Category</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead>Special Pricing</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -131,7 +134,17 @@ export default function ManageExamsPage() {
                   <TableRow key={exam.id}>
                     <TableCell className="font-medium">{exam.name}</TableCell>
                     <TableCell>{exam.shortName}</TableCell>
+                    <TableCell>
+                      <Badge variant={exam.pricingCategory === 'SPECIAL' ? 'default' : 'secondary'}>
+                        {exam.pricingCategory}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="max-w-xs truncate">{exam.description || 'N/A'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {exam.pricingCategory === 'SPECIAL'
+                        ? `N${exam.monthlyFlatFee.toLocaleString()} + N${exam.monthlyPerStudentFee.toLocaleString()}/student monthly`
+                        : 'Included in base access'}
+                    </TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="outline" size="icon" onClick={() => handleEdit(exam)}>
                         <Edit className="w-4 h-4" />
