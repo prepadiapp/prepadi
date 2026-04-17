@@ -1,8 +1,9 @@
 import { prisma } from '@/lib/prisma';
 import { notFound, redirect } from 'next/navigation';
-import { OrgPaperManagerClient } from './client'; 
+import { OrgPaperManagerClient } from './client';
 import { getAuthSession } from '@/lib/auth';
 import { UserRole } from '@prisma/client';
+import { getOrganizationContext } from '@/lib/organization';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -10,39 +11,40 @@ interface PageProps {
 
 export default async function OrgPaperManagePage({ params }: PageProps) {
   const session = await getAuthSession();
-  
+
   if (!session?.user || session.user.role !== UserRole.ORGANIZATION) {
-      redirect('/login');
+    redirect('/login');
   }
+
+  const org = await getOrganizationContext(session);
+  if (!org) redirect('/dashboard');
 
   const resolvedParams = await params;
   const { id } = resolvedParams;
 
-  let orgId = (session.user as any).organizationId;
-  if (!orgId) {
-      const dbUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { organizationId: true } });
-      orgId = dbUser?.organizationId;
-  }
-  if (!orgId) {
-      const ownerOrg = await prisma.organization.findUnique({ where: { ownerId: session.user.id }, select: { id: true } });
-      orgId = ownerOrg?.id;
-  }
-
-  if (!orgId) redirect('/dashboard');
-
-  const paper = await prisma.examPaper.findUnique({
-    where: { id, organizationId: orgId },
+  const paper = await prisma.examPaper.findFirst({
+    where: { id, organizationId: org.organizationId },
     include: {
       exam: true,
       subject: true,
+      examination: true,
       questions: {
-        include: { 
-            options: true,
-            section: true // ADDED: Fetch section relation
+        include: {
+          options: true,
+          section: true,
+          tags: true,
+          questionReviewEntries: {
+            include: {
+              author: {
+                select: { id: true, name: true, email: true },
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+          },
         },
-        orderBy: { order: 'asc' }
-      }
-    }
+        orderBy: { order: 'asc' },
+      },
+    },
   });
 
   if (!paper) notFound();

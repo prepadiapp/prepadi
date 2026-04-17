@@ -183,11 +183,18 @@ export function DashboardGuard({ children }: { children: React.ReactNode }) {
     let buttonText = "Renew Subscription";
     let Icon = Lock;
 
+    const canPay = !isOrgMember && Boolean(pendingPlanId);
+
     if (isOrgMember) {
         title = "Organization Access Paused";
         description = statusMessage || "Your organization's subscription is currently inactive. Please contact your administrator.";
         buttonText = ""; // No button for org members
         Icon = Building;
+    } else if (!pendingPlanId) {
+        title = "Access Restricted";
+        description = statusMessage || "Your account is currently unavailable. Please contact support or your administrator.";
+        buttonText = "";
+        Icon = Lock;
     } else if (isNewUser) {
         title = "Complete Your Registration";
         description = "You need to complete your plan payment to activate your account.";
@@ -208,7 +215,7 @@ export function DashboardGuard({ children }: { children: React.ReactNode }) {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {!isOrgMember && (
+            {canPay && (
                 <Button 
                 className="w-full text-lg py-6 shadow-md transition-all hover:scale-[1.02]" 
                 onClick={handlePayment}

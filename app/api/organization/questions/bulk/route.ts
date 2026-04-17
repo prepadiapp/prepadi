@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthSession } from '@/lib/auth';
-import { UserRole } from '@prisma/client';
+import { ContentStatus, ExaminationCategory, UserRole } from '@prisma/client';
 import mammoth from 'mammoth';
 import { parseBulkTextWithAI } from '@/lib/ai';
-import { parseBulkText } from '@/lib/parser';
+import { ensureOrganizationExamination } from '@/lib/org-examinations';
+import { getOrganizationContext } from '@/lib/organization';
 
 // --- 1. Regex Parsing Logic (Standard) ---
 function parseStandardText(text: string) {
@@ -85,23 +86,8 @@ export async function POST(req: Request) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
     
-    let orgId = (session.user as any).organizationId;
-    if (!orgId) {
-        const dbUser = await prisma.user.findUnique({
-            where: { id: session.user.id },
-            select: { organizationId: true }
-        });
-        orgId = dbUser?.organizationId;
-    }
-    if (!orgId) {
-        const ownerOrg = await prisma.organization.findUnique({
-            where: { ownerId: session.user.id },
-            select: { id: true }
-        });
-        orgId = ownerOrg?.id;
-    }
-
-    if (!orgId) return new NextResponse('Organization ID missing', { status: 403 });
+    const org = await getOrganizationContext(session);
+    if (!org) return new NextResponse('Organization ID missing', { status: 403 });
 
     const formData = await req.formData();
     const file = formData.get('file') as File;
@@ -142,7 +128,7 @@ export async function POST(req: Request) {
     }
 
     // 4. Save to Database
-    const targetOrgId = orgId;
+    const targetOrgId = org.organizationId;
 
     const result = await prisma.$transaction(async (tx) => {
         // A. Resolve Subject
@@ -170,6 +156,15 @@ export async function POST(req: Request) {
         if (!defaultExam) defaultExam = await tx.exam.findFirst();
         
         // C. Create Paper
+        const examination = await ensureOrganizationExamination({
+            organizationId: targetOrgId,
+            authorId: session.user.id,
+            title: paperTitle,
+            category: year ? ExaminationCategory.YEARLY : ExaminationCategory.CUSTOM,
+            year,
+            status: ContentStatus.DRAFT,
+        }, tx);
+
         const paper = await tx.examPaper.create({
             data: {
                 title: paperTitle,
@@ -178,8 +173,11 @@ export async function POST(req: Request) {
                 subjectId: finalSubjectId,
                 organizationId: targetOrgId,
                 authorId: session.user.id,
+                examinationId: examination.id,
                 isPublic: false,
-                isVerified: true 
+                isVerified: true,
+                status: ContentStatus.DRAFT,
+                paperLabel: 'Paper 1',
             }
         });
 
@@ -228,6 +226,7 @@ export async function POST(req: Request) {
                     organizationId: targetOrgId,
                     paperId: paper.id,
                     sectionId: sectionId, 
+                    moderationStatus: ContentStatus.DRAFT,
                     type: q.type === 'THEORY' ? 'THEORY' : 'OBJECTIVE',
                     options: {
                         create: q.options ? q.options.map((opt: any) => ({

@@ -16,10 +16,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Pencil, Save, BookOpen, Calendar, ShieldCheck, Globe } from 'lucide-react';
+import { Loader2, Pencil, Save, BookOpen, Calendar, ShieldCheck, Globe, Clock3, Shuffle, ListOrdered } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSession } from 'next-auth/react';
-import { UserRole } from '@prisma/client';
+import { ContentStatus, UserRole } from '@prisma/client';
 
 interface EditPaperDialogProps {
   paper: {
@@ -28,6 +28,11 @@ interface EditPaperDialogProps {
     year?: number | null; 
     isPublic?: boolean;
     isVerified?: boolean; 
+    status?: ContentStatus;
+    duration?: number | null;
+    randomizeQuestions?: boolean;
+    allowCustomOrder?: boolean;
+    paperLabel?: string | null;
     exam?: { shortName: string } | null;
     subject?: { name: string } | null;
   };
@@ -45,6 +50,10 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
   const [title, setTitle] = useState(paper.title);
   const [isPublic, setIsPublic] = useState(paper.isPublic || false);
   const [isVerified, setIsVerified] = useState(paper.isVerified || false);
+  const [duration, setDuration] = useState(paper.duration?.toString() || '');
+  const [randomizeQuestions, setRandomizeQuestions] = useState(paper.randomizeQuestions || false);
+  const [allowCustomOrder, setAllowCustomOrder] = useState(paper.allowCustomOrder ?? true);
+  const [paperLabel, setPaperLabel] = useState(paper.paperLabel || '');
 
   const isAdmin = session?.user?.role === UserRole.ADMIN;
   const isOrg = session?.user?.role === UserRole.ORGANIZATION;
@@ -62,7 +71,12 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
       const payload: any = { title };
       
       if (isOrg) {
-          payload.isPublic = isPublic; 
+          payload.isPublic = isPublic;
+          payload.status = isPublic ? 'PUBLISHED' : 'DRAFT';
+          payload.duration = duration || null;
+          payload.randomizeQuestions = randomizeQuestions;
+          payload.allowCustomOrder = allowCustomOrder;
+          payload.paperLabel = paperLabel || null;
       }
       if (isAdmin) {
           payload.isVerified = isVerified; 
@@ -141,15 +155,45 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
             />
           </div>
 
+          {isOrg && (
+            <div className="space-y-2">
+              <Label htmlFor="paperLabel" className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Paper Label
+              </Label>
+              <Input
+                id="paperLabel"
+                value={paperLabel}
+                onChange={(e) => setPaperLabel(e.target.value)}
+                placeholder="e.g. Paper 1"
+                className="font-medium text-slate-900"
+              />
+            </div>
+          )}
+
           {/* Org: Public Toggle */}
           {isOrg && (
-            <div className="flex items-center justify-between space-x-2 border border-slate-200 p-3 rounded-lg bg-slate-50/30">
+            <>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <Clock3 className="w-3.5 h-3.5" /> Duration (minutes)
+                  </Label>
+                  <Input
+                    type="number"
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
+                    placeholder="Leave blank for untimed"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between space-x-2 border border-slate-200 p-3 rounded-lg bg-slate-50/30">
                 <div className="space-y-0.5">
                 <Label htmlFor="public-mode" className="text-sm font-medium text-slate-900 flex items-center gap-2">
                     <Globe className="w-4 h-4 text-slate-500"/> Student Access
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                    Enable to make visible to your students immediately.
+                    Publish when the paper is ready for assignments or practice.
                 </p>
                 </div>
                 <Switch
@@ -157,7 +201,32 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
                 checked={isPublic}
                 onCheckedChange={setIsPublic}
                 />
-            </div>
+              </div>
+
+              <div className="flex items-center justify-between space-x-2 border border-slate-200 p-3 rounded-lg bg-slate-50/30">
+                <div className="space-y-0.5">
+                  <Label htmlFor="randomize-mode" className="text-sm font-medium text-slate-900 flex items-center gap-2">
+                    <Shuffle className="w-4 h-4 text-slate-500" /> Randomize Questions
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Off by default so author-defined order stays intact.
+                  </p>
+                </div>
+                <Switch id="randomize-mode" checked={randomizeQuestions} onCheckedChange={setRandomizeQuestions} />
+              </div>
+
+              <div className="flex items-center justify-between space-x-2 border border-slate-200 p-3 rounded-lg bg-slate-50/30">
+                <div className="space-y-0.5">
+                  <Label htmlFor="order-mode" className="text-sm font-medium text-slate-900 flex items-center gap-2">
+                    <ListOrdered className="w-4 h-4 text-slate-500" /> Preserve Custom Order
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Keep manual ordering enabled when you want strict sequence control.
+                  </p>
+                </div>
+                <Switch id="order-mode" checked={allowCustomOrder} onCheckedChange={setAllowCustomOrder} />
+              </div>
+            </>
           )}
 
           {/* Admin: Verified Toggle */}

@@ -1,6 +1,6 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { UserRole, QuestionType } from '@prisma/client';
+import { ContentStatus, UserRole, QuestionType } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
 /**
@@ -26,6 +26,12 @@ export async function GET(
         options: true,
         tags: { select: { name: true } },
         section: true,
+        questionReviewEntries: {
+          include: {
+            author: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
 
@@ -69,7 +75,7 @@ export async function PATCH(
     const body = await request.json();
     const {
       text, explanation, imageUrl, year, subjectId, examId, options, tags,
-      type, section, 
+      type, section, isFlagged, reviewNote, moderationStatus,
     } = body;
 
     // --- 1. Validation ---
@@ -185,6 +191,13 @@ export async function PATCH(
     if (type) updateData.type = type;
     if (sectionId !== undefined) updateData.sectionId = sectionId;
     if (tags) updateData.tags = { set: tagIdsToConnect };
+    if (isFlagged !== undefined) {
+      updateData.isFlagged = Boolean(isFlagged);
+      updateData.flaggedAt = isFlagged ? new Date() : null;
+    }
+    if (moderationStatus !== undefined) {
+      updateData.moderationStatus = moderationStatus as ContentStatus;
+    }
 
     // --- 6. Execute Transaction ---
     // We do NOT use the return value of this transaction directly for the response
@@ -196,7 +209,16 @@ export async function PATCH(
         }),
         ...deleteOps,
         ...updateOps,
-        ...(createOps ? [createOps] : [])
+        ...(createOps ? [createOps] : []),
+        ...((reviewNote && typeof reviewNote === 'string' && reviewNote.trim()) ? [
+          prisma.questionReviewNote.create({
+            data: {
+              questionId: id,
+              authorId: session.user.id,
+              note: reviewNote.trim(),
+            },
+          })
+        ] : [])
     ]);
 
     // --- 7. Fetch the Complete Result ---
@@ -208,6 +230,12 @@ export async function PATCH(
         options: true,
         tags: true, // This returns tags as objects, which PaperEditor expects
         section: true,
+        questionReviewEntries: {
+          include: {
+            author: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
       }
     });
 

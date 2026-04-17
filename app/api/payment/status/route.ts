@@ -25,6 +25,20 @@ export async function GET(request: Request) {
   let subscription = null;
   let isOrgMember = false;
 
+  if (user && !user.isActive) {
+    return NextResponse.json({
+      authenticated: true,
+      role: userRole,
+      missingSubscription: false,
+      needsPayment: true,
+      requiresOrgPlanRefresh: false,
+      planId: null,
+      isNewUser: false,
+      isOrgMember: false,
+      statusMessage: 'This account has been deactivated by an administrator.',
+    });
+  }
+
   if (userRole === UserRole.ORGANIZATION) {
     const org = await prisma.organization.findUnique({ where: { ownerId: userId } });
     if (org) {
@@ -65,7 +79,14 @@ export async function GET(request: Request) {
   let requiresOrgPlanRefresh = false;
 
   if (subscription) {
-    const isPaidPlan = subscription.plan.price > 0;
+    const orgQuoteAmount =
+      subscription.organizationId &&
+      subscription.quoteSnapshot &&
+      typeof (subscription.quoteSnapshot as any).amount === 'number'
+        ? (subscription.quoteSnapshot as any).amount
+        : 0;
+    const effectiveAmount = subscription.organizationId ? orgQuoteAmount : subscription.plan.price;
+    const isPaidPlan = effectiveAmount > 0;
     const hasExpired = subscription.endDate ? new Date(subscription.endDate) < new Date() : false;
     const isLegacyOrgSubscription =
       subscription.organizationId &&
@@ -80,6 +101,8 @@ export async function GET(request: Request) {
        needsPayment = true;
        if (isOrgMember) {
            statusMessage = "Your organization's subscription has expired. Please contact your administrator.";
+       } else if (subscription.organizationId) {
+           statusMessage = "Complete your organization payment to activate the pricing configuration you selected.";
        } else {
            statusMessage = "Your subscription has expired.";
        }

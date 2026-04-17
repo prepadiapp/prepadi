@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Users,
   FileText,
+  Shapes,
   BarChart,
   CreditCard,
   Building2,
@@ -31,7 +32,12 @@ const sidebarLinks = [
     icon: Users,
   },
   {
-    title: 'Library (Papers)',
+    title: 'Subjects',
+    href: '/organization/subjects',
+    icon: Shapes,
+  },
+  {
+    title: 'Examinations',
     href: '/organization/papers',
     icon: FileText,
   },
