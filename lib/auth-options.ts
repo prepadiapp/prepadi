@@ -81,6 +81,7 @@ export const authOptions: NextAuthOptions = {
 
         if (!isPasswordValid) return null;
         if (!user.emailVerified) return null;
+        if (!user.isActive) return null;
 
         return user;
       },
@@ -93,6 +94,7 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = user.role;
         token.emailVerified = user.emailVerified;
+        token.isActive = user.isActive;
       }
       return token;
     },
@@ -102,6 +104,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string;
         session.user.emailVerified = token.emailVerified as Date | null;
         session.user.role = token.role as UserRole;
+        session.user.isActive = token.isActive as boolean;
       }
       return session;
     },

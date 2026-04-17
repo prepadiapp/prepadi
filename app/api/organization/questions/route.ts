@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthSession } from '@/lib/auth';
-import { UserRole } from '@prisma/client';
+import { ContentStatus, UserRole } from '@prisma/client';
+import { getOrganizationContext } from '@/lib/organization';
 
 export async function POST(req: Request) {
   try {
@@ -11,23 +12,8 @@ export async function POST(req: Request) {
     }
 
     // --- ROBUST ORG ID RESOLUTION ---
-    let orgId = (session.user as any).organizationId;
-    if (!orgId) {
-        const dbUser = await prisma.user.findUnique({
-            where: { id: session.user.id },
-            select: { organizationId: true }
-        });
-        orgId = dbUser?.organizationId;
-    }
-    if (!orgId) {
-        const ownerOrg = await prisma.organization.findUnique({
-            where: { ownerId: session.user.id },
-            select: { id: true }
-        });
-        orgId = ownerOrg?.id;
-    }
-
-    if (!orgId) return new NextResponse('Org ID missing', { status: 403 });
+    const org = await getOrganizationContext(session);
+    if (!org) return new NextResponse('Org ID missing', { status: 403 });
     // --------------------------------
 
     const body = await req.json();
@@ -59,9 +45,10 @@ export async function POST(req: Request) {
             year: paper.year ?? new Date().getFullYear(),
             subjectId: paper.subjectId!, 
             examId: paper.examId, 
-            organizationId: orgId,
+            organizationId: org.organizationId,
             imageUrl,
             explanation,
+            moderationStatus: ContentStatus.DRAFT,
             sectionId,
             options: {
                 create: options

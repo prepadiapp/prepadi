@@ -58,6 +58,8 @@ model User {
   
   // NEW: Needed for Transaction relation
   transactions    Transaction[]
+  questionReviewNotes QuestionReviewNote[]
+  createdExaminations OrganizationExamination[]
 }
 
 model Account {
@@ -112,6 +114,7 @@ model Organization {
   
   // NEW: LMS Relations
   examPapers    ExamPaper[]
+  examinations OrganizationExamination[]
   assignments   Assignment[]
 
   createdAt DateTime @default(now())
@@ -322,9 +325,14 @@ model Question {
   order          Int?         @default(0)
   paperId        String?
   paper          ExamPaper?   @relation(fields: [paperId], references: [id])
+  isFlagged      Boolean      @default(false)
+  flaggedAt      DateTime?
+  reviewNotes    Json?
+  moderationStatus ContentStatus @default(DRAFT)
   
   updatedAt      DateTime     @updatedAt @default(now())
   createdAt      DateTime     @default(now())
+  questionReviewEntries QuestionReviewNote[]
 }
 
 model Option {
@@ -354,6 +362,13 @@ model Section {
 model ExamPaper {
   id             String   @id @default(cuid())
   title          String   
+  paperLabel     String?
+  status         ContentStatus @default(DRAFT)
+  publishedAt    DateTime?
+  randomizeQuestions Boolean @default(false)
+  allowCustomOrder Boolean @default(true)
+  duration       Int?
+  practiceEnabled Boolean @default(false)
   
   // Metadata
   examId         String
@@ -361,6 +376,8 @@ model ExamPaper {
   subjectId      String?
   subject        Subject? @relation(fields: [subjectId], references: [id])
   year           Int?
+  examinationId  String?
+  examination    OrganizationExamination? @relation(fields: [examinationId], references: [id], onDelete: Cascade)
   
   // Visibility & Ownership
   isVerified     Boolean  @default(false) 
@@ -386,6 +403,8 @@ model Assignment {
   
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
+  examinationId  String?
+  examination    OrganizationExamination? @relation(fields: [examinationId], references: [id], onDelete: SetNull)
   
   paperId        String
   paper          ExamPaper    @relation(fields: [paperId], references: [id])
@@ -401,6 +420,38 @@ model Assignment {
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model OrganizationExamination {
+  id                String   @id @default(cuid())
+  title             String
+  description       String?
+  category          ExaminationCategory @default(CUSTOM)
+  year              Int?
+  status            ContentStatus @default(DRAFT)
+  publishedAt       DateTime?
+  randomizeQuestions Boolean @default(false)
+  allowCustomOrder  Boolean @default(true)
+  duration          Int?
+  practiceEnabled   Boolean @default(false)
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  authorId          String
+  author            User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  papers            ExamPaper[]
+  assignments       Assignment[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model QuestionReviewNote {
+  id         String   @id @default(cuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  note       String   @db.Text
+  createdAt  DateTime @default(now())
 }
 
 // --- 5. PERFORMANCE MODELS ---
@@ -523,4 +574,18 @@ enum AttemptStatus {
 enum ExamPricingCategory {
   BASE
   SPECIAL
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ExaminationCategory {
+  YEARLY
+  PRACTICE
+  MOCK
+  INTERNAL
+  CUSTOM
 }

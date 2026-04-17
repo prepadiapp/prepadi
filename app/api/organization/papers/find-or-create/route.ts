@@ -1,184 +1,220 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { getAuthSession } from '@/lib/auth';
-import { UserRole } from '@prisma/client';
+import { NextResponse } from "next/server";
+import { ContentStatus, ExaminationCategory, UserRole } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { getAuthSession } from "@/lib/auth";
+import { ensureOrganizationExamination } from "@/lib/org-examinations";
+import { getOrganizationContext } from "@/lib/organization";
 
 export async function POST(req: Request) {
   try {
     const session = await getAuthSession();
-    
+
     if (!session?.user || session.user.role !== UserRole.ORGANIZATION) {
-      return new NextResponse('Unauthorized', { status: 401 });
+      return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    // --- ROBUST ORG ID RESOLUTION ---
-    let orgId = (session.user as any).organizationId;
-    if (!orgId) {
-        const dbUser = await prisma.user.findUnique({
-            where: { id: session.user.id },
-            select: { organizationId: true }
-        });
-        orgId = dbUser?.organizationId;
-    }
-    if (!orgId) {
-        const ownerOrg = await prisma.organization.findUnique({
-            where: { ownerId: session.user.id },
-            select: { id: true }
-        });
-        orgId = ownerOrg?.id;
-    }
-
-    if (!orgId) return new NextResponse('Organization ID missing. Please re-login.', { status: 403 });
-    // --------------------------------
+    const org = await getOrganizationContext(session);
+    if (!org) return new NextResponse("Organization ID missing. Please re-login.", { status: 403 });
 
     const body = await req.json();
-    const { examId, subjectId, year, title, mode } = body; 
+    const {
+      examId,
+      subjectId,
+      year,
+      title,
+      mode,
+      category,
+      duration,
+      randomizeQuestions,
+      allowCustomOrder,
+      practiceEnabled,
+      paperLabel,
+    } = body;
 
-    // --- CASE 1: CREATE BLANK PAPER ---
-    if (mode === 'create') {
-        if (!subjectId || !title) return new NextResponse("Missing title or subject", { status: 400 });
-        
-        let internalExam = await prisma.exam.findFirst({ where: { name: 'Internal' } });
-        if (!internalExam) internalExam = await prisma.exam.findFirst(); 
+    if (mode === "create") {
+      if (!subjectId || !title) return new NextResponse("Missing title or subject", { status: 400 });
 
-        const newPaper = await prisma.examPaper.create({
-            data: {
-                title,
-                year: new Date().getFullYear(), 
-                subjectId,
-                examId: internalExam?.id!, 
-                organizationId: orgId,
-                authorId: session.user.id,
-                isPublic: true, 
-                isVerified: true
-            }
-        });
-        return NextResponse.json(newPaper);
+      let internalExam = await prisma.exam.findFirst({ where: { name: "Internal" } });
+      if (!internalExam) internalExam = await prisma.exam.findFirst();
+
+      if (!internalExam) {
+        return new NextResponse("No exam body configured", { status: 400 });
+      }
+
+      const examination = await ensureOrganizationExamination({
+        organizationId: org.organizationId,
+        authorId: session.user.id,
+        title,
+        category: (category as ExaminationCategory) ?? (year ? ExaminationCategory.YEARLY : ExaminationCategory.CUSTOM),
+        year: year ? Number(year) : null,
+        duration: duration ? Number(duration) : null,
+        randomizeQuestions: Boolean(randomizeQuestions),
+        allowCustomOrder: allowCustomOrder !== false,
+        practiceEnabled: Boolean(practiceEnabled),
+        status: ContentStatus.DRAFT,
+      });
+
+      const newPaper = await prisma.examPaper.create({
+        data: {
+          title,
+          paperLabel: paperLabel || "Paper 1",
+          year: year ? Number(year) : null,
+          subjectId,
+          examId: internalExam.id,
+          organizationId: org.organizationId,
+          authorId: session.user.id,
+          examinationId: examination.id,
+          isPublic: false,
+          isVerified: true,
+          status: ContentStatus.DRAFT,
+          randomizeQuestions: Boolean(randomizeQuestions),
+          allowCustomOrder: allowCustomOrder !== false,
+          duration: duration ? Number(duration) : null,
+          practiceEnabled: Boolean(practiceEnabled),
+        },
+      });
+
+      return NextResponse.json(newPaper);
     }
 
-    // --- CASE 2: CLONE FROM GLOBAL (STRICT DB FETCH) ---
     if (!examId || !subjectId || !year) {
-      return new NextResponse('Missing required fields for cloning', { status: 400 });
+      return new NextResponse("Missing required fields for cloning", { status: 400 });
     }
 
-    // Check if Org ALREADY HAS this paper
+    const parsedYear = parseInt(String(year), 10);
+    if (Number.isNaN(parsedYear)) {
+      return new NextResponse("Invalid year for cloning", { status: 400 });
+    }
+
     const existingOrgPaper = await prisma.examPaper.findFirst({
       where: {
         examId,
         subjectId,
-        year: parseInt(year),
-        organizationId: orgId, 
-      }
+        year: parsedYear,
+        organizationId: org.organizationId,
+      },
     });
 
     if (existingOrgPaper) {
-      return NextResponse.json(existingOrgPaper);
+      return NextResponse.json({
+        ...existingOrgPaper,
+        existingClone: true,
+      });
     }
 
-    // --- FIND GLOBAL CONTENT (Paper OR Questions) ---
     let sourceQuestions: any[] = [];
 
     const globalPaper = await prisma.examPaper.findFirst({
       where: {
         examId,
         subjectId,
-        year: parseInt(year),
+        year: parsedYear,
         isPublic: true,
-        organizationId: null 
+        organizationId: null,
       },
-      include: { 
-          questions: {
-            include: { options: true, tags: true } 
-          } 
-      }
+      include: {
+        questions: {
+          include: { options: true, tags: true },
+        },
+      },
     });
 
     if (globalPaper) {
-        sourceQuestions = globalPaper.questions;
+      sourceQuestions = globalPaper.questions;
     } else {
-        // Fallback: Find loose global questions matching criteria
-        sourceQuestions = await prisma.question.findMany({
-            where: {
-                examId,
-                subjectId,
-                year: parseInt(year),
-                organizationId: null
-            },
-            include: { options: true, tags: true },
-            orderBy: { order: 'asc' }
-        });
+      sourceQuestions = await prisma.question.findMany({
+        where: {
+          examId,
+          subjectId,
+          year: parsedYear,
+          organizationId: null,
+        },
+        include: { options: true, tags: true },
+        orderBy: { order: "asc" },
+      });
     }
 
     if (sourceQuestions.length === 0) {
-        return new NextResponse("Global content (paper or questions) not found for this selection.", { status: 404 });
+      return new NextResponse("This exam, subject, and year combination is not available in the global library.", { status: 404 });
     }
 
     const [exam, subject] = await Promise.all([
       prisma.exam.findUnique({ where: { id: examId } }),
-      prisma.subject.findUnique({ where: { id: subjectId } })
+      prisma.subject.findUnique({ where: { id: subjectId } }),
     ]);
 
     const paperTitle = `${exam?.shortName} ${subject?.name} ${year}`;
-
-    // --- FIX FOR TRANSACTION TIMEOUT (P2028) ---
-    // Instead of one giant transaction, we create the paper first, 
-    // then create questions in parallel batches.
-    
-    // 1. Create the Paper Container
-    const newOrgPaper = await prisma.examPaper.create({
-        data: {
-            title: paperTitle,
-            year: parseInt(year),
-            examId,
-            subjectId,
-            authorId: session.user.id,
-            organizationId: orgId, 
-            isPublic: true, 
-            isVerified: true
-        }
+    const examination = await ensureOrganizationExamination({
+      organizationId: org.organizationId,
+      authorId: session.user.id,
+      title: paperTitle,
+      category: ExaminationCategory.YEARLY,
+      year: parsedYear,
+      duration: duration ? Number(duration) : null,
+      randomizeQuestions: Boolean(randomizeQuestions),
+      allowCustomOrder: allowCustomOrder !== false,
+      practiceEnabled: Boolean(practiceEnabled),
+      status: ContentStatus.DRAFT,
     });
 
-    // 2. Clone Questions (Optimized Parallel Execution)
-    // We map all creation promises and await them. This is much faster than sequential awaiting.
-    // If there are TOO many (e.g. > 50), we might want to batch, but for <100 Promise.all is fine on Vercel.
-    
+    const newOrgPaper = await prisma.examPaper.create({
+      data: {
+        title: paperTitle,
+        paperLabel: paperLabel || "Paper 1",
+        year: parsedYear,
+        examId,
+        subjectId,
+        authorId: session.user.id,
+        organizationId: org.organizationId,
+        examinationId: examination.id,
+        isPublic: false,
+        isVerified: true,
+        status: ContentStatus.DRAFT,
+        randomizeQuestions: Boolean(randomizeQuestions),
+        allowCustomOrder: allowCustomOrder !== false,
+        duration: duration ? Number(duration) : null,
+        practiceEnabled: Boolean(practiceEnabled),
+      },
+    });
+
     try {
-        await Promise.all(sourceQuestions.map(q => 
-            prisma.question.create({
-                data: {
-                    text: q.text,
-                    explanation: q.explanation,
-                    imageUrl: q.imageUrl,
-                    type: q.type,
-                    year: parseInt(year),
-                    examId,
-                    subjectId,
-                    organizationId: orgId, // OWNED BY ORG
-                    paperId: newOrgPaper.id, // LINKED TO NEW PAPER
-                    options: {
-                        create: q.options.map((opt: any) => ({
-                            text: opt.text,
-                            isCorrect: opt.isCorrect
-                        }))
-                    },
-                    tags: {
-                        connect: q.tags.map((t: any) => ({ id: t.id })) // Reuse tags
-                    }
-                }
-            })
-        ));
+      await Promise.all(
+        sourceQuestions.map((q) =>
+          prisma.question.create({
+            data: {
+              text: q.text,
+              explanation: q.explanation,
+              imageUrl: q.imageUrl,
+              type: q.type,
+              year: parsedYear,
+              examId,
+              subjectId,
+              organizationId: org.organizationId,
+              paperId: newOrgPaper.id,
+              moderationStatus: ContentStatus.DRAFT,
+              options: {
+                create: q.options.map((opt: any) => ({
+                  text: opt.text,
+                  isCorrect: opt.isCorrect,
+                })),
+              },
+              tags: {
+                connect: q.tags.map((t: any) => ({ id: t.id })),
+              },
+            },
+          })
+        )
+      );
     } catch (err) {
-        // If question cloning fails, we might want to delete the empty paper to keep it clean,
-        // or just log it. For now, we log.
-        console.error("Error cloning questions, but paper created:", err);
-        // Optional: await prisma.examPaper.delete({ where: { id: newOrgPaper.id } });
-        // throw err;
+      console.error("Error cloning questions, but paper created:", err);
     }
 
-    return NextResponse.json(newOrgPaper);
-
+    return NextResponse.json({
+      ...newOrgPaper,
+      existingClone: false,
+    });
   } catch (error) {
-    console.error('[ORG_PAPER_FIND_CREATE]', error);
-    return new NextResponse('Internal Error', { status: 500 });
+    console.error("[ORG_PAPER_FIND_CREATE]", error);
+    return new NextResponse("Internal Error", { status: 500 });
   }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthSession } from '@/lib/auth';
 import { UserRole } from '@prisma/client';
+import { getOrganizationContext } from '@/lib/organization';
 
 export async function GET(req: Request) {
   try {
@@ -12,44 +13,30 @@ export async function GET(req: Request) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
     
-    // --- ROBUST ORG ID RESOLUTION ---
-    // Try getting from session first
-    let orgId = (session.user as any).organizationId;
-    
-    if (!orgId) {
-        // Fallback: Check if user is an OWNER (most common for Org accounts)
-        const ownerOrg = await prisma.organization.findUnique({
-            where: { ownerId: session.user.id },
-            select: { id: true }
-        });
-        
-        if (ownerOrg) {
-            orgId = ownerOrg.id;
-        } else {
-            // Fallback: Check if user is a MEMBER via DB lookup
-            const dbUser = await prisma.user.findUnique({
-                where: { id: session.user.id },
-                select: { organizationId: true }
-            });
-            orgId = dbUser?.organizationId;
-        }
-    }
-    
-    if (!orgId) return new NextResponse('Organization ID missing', { status: 403 });
-    // --------------------------------
+    const org = await getOrganizationContext(session);
+    if (!org) return new NextResponse('Organization ID missing', { status: 403 });
 
     // 2. Fetch Papers for this Org
     const papers = await prisma.examPaper.findMany({
       where: {
-        organizationId: orgId
+        organizationId: org.organizationId
       },
       include: {
         exam: true,
         subject: true,
+        examination: {
+          select: {
+            id: true,
+            title: true,
+            category: true,
+            status: true,
+            practiceEnabled: true,
+          },
+        },
         questions: { select: { id: true } }, // Count questions
       },
-      orderBy: { updatedAt: 'desc' },
-      take: 50
+      orderBy: [{ updatedAt: 'desc' }],
+      take: 100
     });
 
     // 3. Format Response

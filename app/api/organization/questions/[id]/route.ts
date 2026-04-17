@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthSession } from '@/lib/auth';
-import { UserRole, QuestionType } from '@prisma/client';
+import { ContentStatus, QuestionType, UserRole } from '@prisma/client';
 
 // Helper to check ownership
 async function verifyOrgAccess(questionId: string, orgId: string) {
@@ -40,7 +40,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!await verifyOrgAccess(id, orgId)) return new NextResponse('Forbidden: You do not own this question', { status: 403 });
 
     const body = await req.json();
-    const { text, explanation, imageUrl, options, section, type } = body; // Added type
+    const { text, explanation, imageUrl, options, section, type, isFlagged, reviewNote, moderationStatus } = body;
 
     // --- Handle Section ---
     let sectionId: string | null | undefined = undefined;
@@ -105,6 +105,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
     if (type !== undefined) updateData.type = type as QuestionType; // Allow changing type
     if (sectionId !== undefined) updateData.sectionId = sectionId;
+    if (isFlagged !== undefined) {
+      updateData.isFlagged = Boolean(isFlagged);
+      updateData.flaggedAt = isFlagged ? new Date() : null;
+    }
+    if (moderationStatus !== undefined) {
+      updateData.moderationStatus = moderationStatus as ContentStatus;
+    }
 
     const transactionOps = [
         prisma.question.update({ where: { id }, data: updateData }),
@@ -112,8 +119,40 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         ...updateOps,
     ];
     if (createOps) transactionOps.push(createOps);
+    if (reviewNote && typeof reviewNote === 'string' && reviewNote.trim()) {
+      transactionOps.push(
+        prisma.questionReviewNote.create({
+          data: {
+            questionId: id,
+            authorId: session.user.id,
+            note: reviewNote.trim(),
+          },
+        })
+      );
+    }
 
-    const [updated] = await prisma.$transaction(transactionOps);
+    await prisma.$transaction(transactionOps);
+
+    const updated = await prisma.question.findUnique({
+      where: { id },
+      include: {
+        options: true,
+        section: true,
+        tags: true,
+        questionReviewEntries: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
 
     return NextResponse.json(updated);
 }

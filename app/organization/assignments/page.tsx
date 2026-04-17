@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CreateAssignmentDialog } from '@/components/org/CreateAssignmentDialog';
-import { Loader2, Calendar, Clock, Users, Trash2, Edit } from 'lucide-react';
+import { Loader2, Calendar, Clock, Users, Trash2, FileStack } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -32,9 +32,14 @@ export default function OrgAssignmentsPage() {
 
   const handleDelete = async (id: string) => {
       if(!confirm("Delete this assignment? Student results will be kept but access removed.")) return;
-      // Note: Need DELETE API endpoint logic, omitting for brevity but assumes existence or reuse
-      // Ideally implement DELETE in the API route created earlier.
-      toast.info("Delete functionality pending implementation");
+      try {
+        const res = await fetch(`/api/organization/assignments?id=${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Delete failed');
+        toast.success("Assignment deleted");
+        fetchData();
+      } catch (error) {
+        toast.error("Failed to delete assignment");
+      }
   };
 
   const getStatus = (start: string, end: string) => {
@@ -53,7 +58,7 @@ export default function OrgAssignmentsPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900">Assignments</h1>
-          <p className="text-sm text-slate-500">Schedule and manage exams for your students.</p>
+          <p className="text-sm text-slate-500">Schedule and manage examinations for your students.</p>
         </div>
         <CreateAssignmentDialog onSuccess={fetchData} />
       </div>
@@ -64,7 +69,7 @@ export default function OrgAssignmentsPage() {
           <div className="flex flex-col items-center justify-center py-16 px-4 text-center border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
               <Calendar className="w-10 h-10 text-slate-300 mb-3" />
               <p className="text-slate-900 font-medium">No assignments scheduled</p>
-              <p className="text-slate-500 text-sm mt-1">Create your first exam schedule to get started.</p>
+              <p className="text-slate-500 text-sm mt-1">Create your first examination schedule to get started.</p>
           </div>
       ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -85,9 +90,15 @@ export default function OrgAssignmentsPage() {
                                 </div>
                             </div>
                             <CardTitle className="text-base line-clamp-1" title={assignment.title}>{assignment.title}</CardTitle>
-                            <CardDescription className="text-xs line-clamp-1">{assignment.paper.title}</CardDescription>
+                            <CardDescription className="text-xs line-clamp-1">
+                              {assignment.examination?.title || assignment.paper.title}
+                            </CardDescription>
                         </CardHeader>
                         <CardContent className="text-xs space-y-2 text-slate-600">
+                            <div className="flex items-center gap-2">
+                                <FileStack className="w-3.5 h-3.5 text-slate-400"/>
+                                <span>{assignment.paper.paperLabel || assignment.paper.title}</span>
+                            </div>
                             <div className="flex items-center gap-2">
                                 <Calendar className="w-3.5 h-3.5 text-slate-400"/>
                                 <span>

@@ -64,6 +64,7 @@ export async function GET(request: Request) {
       name: user.name,
       email: user.email,
       role: user.role,
+      isActive: user.isActive,
       organizationId: user.organizationId,
       organizationName: user.organization?.name,
       ownedOrganizationName: user.ownedOrganization?.name,
@@ -120,7 +121,7 @@ export async function PATCH(request: Request) {
 
     try {
         const body = await request.json();
-        const { userId, organizationId, planId, role } = body;
+        const { userId, organizationId, planId, role, isActive } = body;
 
         if (!userId) return new NextResponse("User ID required", { status: 400 });
 
@@ -128,6 +129,7 @@ export async function PATCH(request: Request) {
         const updateData: any = {};
         if (organizationId !== undefined) updateData.organizationId = organizationId;
         if (role) updateData.role = role;
+        if (isActive !== undefined) updateData.isActive = Boolean(isActive);
 
         await prisma.$transaction(async (tx) => {
             // 1. Update User basic info

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { MoreHorizontal, Pencil, Trash2, Building2 } from 'lucide-react';
+import { MoreHorizontal, Pencil, Trash2, Building2, Power } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -110,6 +110,31 @@ export function UserListActions({ user }: { user: any }) {
                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
                 <DropdownMenuItem onClick={() => setIsEditOpen(true)}>
                     <Pencil className="mr-2 h-4 w-4" /> Edit / Assign Org
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                    onClick={async () => {
+                      setLoading(true);
+                      try {
+                        const res = await fetch(`/api/admin/users`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            userId: user.id,
+                            isActive: !user.isActive,
+                          }),
+                        });
+
+                        if (!res.ok) throw new Error('Toggle failed');
+                        toast.success(`User ${user.isActive ? 'deactivated' : 'activated'}`);
+                        router.refresh();
+                      } catch (error) {
+                        toast.error('Failed to update user status');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                >
+                    <Power className="mr-2 h-4 w-4" /> {user.isActive ? 'Deactivate User' : 'Activate User'}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => setIsDeleteOpen(true)} className="text-red-600">

@@ -91,6 +91,11 @@ export default async function AdminUsersPage() {
                         {user.role === 'STUDENT' && <UserIcon className="w-3 h-3"/>}
                         {user.role}
                       </Badge>
+                      <div className="mt-1">
+                        <Badge variant="outline" className={user.isActive ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}>
+                          {user.isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </div>
                     </TableCell>
                     <TableCell>
                       {user.ownedOrganization ? (

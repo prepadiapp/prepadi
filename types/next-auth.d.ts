@@ -7,6 +7,7 @@ declare module "next-auth" {
       id: string
       role: UserRole
       organizationId?: string | null
+      isActive?: boolean
       emailVerified: Date | null // Added emailVerified
     } & DefaultSession["user"]
   }
@@ -15,6 +16,7 @@ declare module "next-auth" {
     id: string
     role: UserRole
     organizationId?: string | null
+    isActive?: boolean
     emailVerified: Date | null // Added emailVerified
   }
 }
@@ -24,6 +26,7 @@ declare module "next-auth/jwt" {
     id: string
     role: UserRole
     organizationId?: string | null
+    isActive?: boolean
     emailVerified: Date | null // Added emailVerified
   }
 }

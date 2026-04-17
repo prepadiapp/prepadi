@@ -38,7 +38,7 @@ export const sendVerificationEmail = async (email: string, token: string) => {
 
   try {
     const { data, error } = await resend.emails.send({
-      from: 'Prepadi <onboarding@resend.dev>', // Note: Resend requires a verified domain in production.
+      from: 'Prepadi <onboarding@prepadi.online>',
       to: [email],
       subject: 'Verify your email for Prepadi',
       html: `
@@ -88,7 +88,7 @@ export const sendPasswordResetEmail = async (email: string, token: string) => {
 
   try {
     const { error } = await resend.emails.send({
-      from: 'Prepadi <onboarding@resend.dev>',
+      from: 'Prepadi <onboarding@prepadi.online>',
       to: [email],
       subject: 'Reset your Prepadi Password',
       html: `
@@ -137,7 +137,7 @@ export const sendOrgInviteEmail = async (email: string, token: string, orgName: 
 
   try {
     const { error } = await resend.emails.send({
-      from: 'Prepadi <invites@resend.dev>', // Use verified domain in prod
+      from: 'Prepadi <invites@prepadi.online>', // Use verified domain in prod
       to: [email],
       subject: `Invitation to join ${orgName} on Prepadi`,
       html: `

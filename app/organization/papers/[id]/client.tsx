@@ -17,7 +17,7 @@ export function OrgPaperManagerClient({ paper }: { paper: any }) {
   const handleDeletePaper = async () => {
       if(!confirm("Are you sure? This will delete the entire paper and all its questions.")) return;
       try {
-          const res = await fetch(`/api/admin/papers/${paper.id}`, { method: 'DELETE' });
+          const res = await fetch(`/api/organization/papers/${paper.id}`, { method: 'DELETE' });
           if(res.ok) {
               toast.success("Paper deleted");
               router.push('/organization/papers');
@@ -26,6 +26,32 @@ export function OrgPaperManagerClient({ paper }: { paper: any }) {
           }
       } catch(e) {
           toast.error("Error deleting paper");
+      }
+  };
+
+  const handleTogglePublish = async () => {
+      if (!paper.examination?.id) {
+          toast.error("This paper is not linked to an examination.");
+          return;
+      }
+
+      const nextStatus = paper.examination.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED';
+
+      try {
+          const res = await fetch(`/api/organization/examinations/${paper.examination.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  status: nextStatus,
+                  syncPaperSettings: true,
+              }),
+          });
+
+          if (!res.ok) throw new Error('Failed to update status');
+          toast.success(nextStatus === 'PUBLISHED' ? 'Examination published' : 'Examination moved to draft');
+          router.refresh();
+      } catch (error) {
+          toast.error('Could not update examination status');
       }
   };
 
@@ -57,15 +83,24 @@ export function OrgPaperManagerClient({ paper }: { paper: any }) {
                         <BookOpen className="w-3 h-3 text-slate-400"/> 
                         <span className="truncate max-w-[100px]">{paper.subject?.name}</span>
                     </div>
-                    {/* Hiding Year from Org View as requested */}
-                    <Badge variant={paper.isPublic ? "default" : "secondary"} className="h-4 px-1.5 text-[9px] md:text-[10px] font-bold tracking-wide uppercase">
-                       {paper.isPublic ? "Public Access" : "Draft"}
+                    <Badge variant={paper.examination?.status === "PUBLISHED" ? "default" : "secondary"} className="h-4 px-1.5 text-[9px] md:text-[10px] font-bold tracking-wide uppercase">
+                       {paper.examination?.status || paper.status || (paper.isPublic ? "PUBLISHED" : "DRAFT")}
                     </Badge>
                  </div>
               </div>
            </div>
            
            <div className="flex items-center gap-2 w-full md:w-auto justify-end border-t border-slate-100 md:border-0 pt-2 md:pt-0 mt-1 md:mt-0">
+              {paper.examination?.id && (
+                <Button
+                  variant={paper.examination.status === 'PUBLISHED' ? 'outline' : 'default'}
+                  size="sm"
+                  className={paper.examination.status === 'PUBLISHED' ? 'text-amber-700 border-amber-200 bg-amber-50 hover:bg-amber-100' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}
+                  onClick={handleTogglePublish}
+                >
+                  {paper.examination.status === 'PUBLISHED' ? 'Move To Draft' : 'Publish Exam'}
+                </Button>
+              )}
               <Button 
                 variant="ghost" 
                 size="sm" 

@@ -123,7 +123,8 @@ export const PaymentService = {
         console.log(`[PaymentService] Transaction record created`);
 
         // C. Create/Update Subscription
-        const endDate = calculateEndDate(order.plan.interval);
+        const resolvedInterval = order.pricingInterval ?? order.plan.interval;
+        const endDate = calculateEndDate(resolvedInterval);
         console.log(`[PaymentService] Calculated End Date: ${endDate}`);
         
         if (order.plan.type === PlanType.ORGANIZATION) {
@@ -233,7 +234,12 @@ export const PaymentService = {
         where: { organizationId: org.id },
         include: { plan: true },
       });
-      if (orgSub && !orgSub.isActive && orgSub.plan.price > 0) {
+      const orgQuoteAmount =
+        orgSub?.quoteSnapshot && typeof (orgSub.quoteSnapshot as any).amount === 'number'
+          ? (orgSub.quoteSnapshot as any).amount
+          : 0;
+
+      if (orgSub && !orgSub.isActive && orgQuoteAmount > 0) {
         return { needsPayment: true, planId: orgSub.planId };
       }
     }
