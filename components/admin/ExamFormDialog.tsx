@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Exam, ExamPricingCategory } from '@prisma/client'; 
+import {
+  ContentStatus,
+  ExaminationCategory,
+} from '@prisma/client';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -17,46 +20,77 @@ import { Textarea } from '@/components/ui/textarea';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+
+interface OrganizationOption {
+  id: string;
+  name: string;
+}
+
+interface ExaminationRecord {
+  id: string;
+  title: string;
+  description?: string | null;
+  category: ExaminationCategory;
+  year?: number | null;
+  status: ContentStatus;
+  duration?: number | null;
+  randomizeQuestions: boolean;
+  allowCustomOrder: boolean;
+  practiceEnabled: boolean;
+  organizationId?: string | null;
+}
 
 interface ExamFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  exam: Exam | null; // null for "Add New", Exam object for "Edit"
-  onSave: () => void; // Function to refresh the table
+  exam: ExaminationRecord | null;
+  organizations: OrganizationOption[];
+  onSave: () => void;
 }
 
-export function ExamFormDialog({ open, onOpenChange, exam, onSave }: ExamFormDialogProps) {
-  const [name, setName] = useState('');
-  const [shortName, setShortName] = useState('');
+export function ExamFormDialog({
+  open,
+  onOpenChange,
+  exam,
+  organizations,
+  onSave,
+}: ExamFormDialogProps) {
+  const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [pricingCategory, setPricingCategory] = useState<ExamPricingCategory>(ExamPricingCategory.BASE);
-  const [monthlyFlatFee, setMonthlyFlatFee] = useState(0);
-  const [yearlyFlatFee, setYearlyFlatFee] = useState(0);
-  const [monthlyPerStudentFee, setMonthlyPerStudentFee] = useState(0);
-  const [yearlyPerStudentFee, setYearlyPerStudentFee] = useState(0);
+  const [category, setCategory] = useState<ExaminationCategory>(ExaminationCategory.CUSTOM);
+  const [year, setYear] = useState('');
+  const [status, setStatus] = useState<ContentStatus>(ContentStatus.DRAFT);
+  const [duration, setDuration] = useState('');
+  const [organizationId, setOrganizationId] = useState<string>('platform');
+  const [randomizeQuestions, setRandomizeQuestions] = useState(false);
+  const [allowCustomOrder, setAllowCustomOrder] = useState(true);
+  const [practiceEnabled, setPracticeEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // When the dialog opens, populate the form if we are editing
   useEffect(() => {
     if (open && exam) {
-      setName(exam.name);
-      setShortName(exam.shortName);
+      setTitle(exam.title);
       setDescription(exam.description || '');
-      setPricingCategory(exam.pricingCategory);
-      setMonthlyFlatFee(exam.monthlyFlatFee);
-      setYearlyFlatFee(exam.yearlyFlatFee);
-      setMonthlyPerStudentFee(exam.monthlyPerStudentFee);
-      setYearlyPerStudentFee(exam.yearlyPerStudentFee);
-    } else if (open && !exam) {
-      // Reset form for "Add New"
-      setName('');
-      setShortName('');
+      setCategory(exam.category);
+      setYear(exam.year ? String(exam.year) : '');
+      setStatus(exam.status);
+      setDuration(exam.duration ? String(exam.duration) : '');
+      setOrganizationId(exam.organizationId || 'platform');
+      setRandomizeQuestions(exam.randomizeQuestions);
+      setAllowCustomOrder(exam.allowCustomOrder);
+      setPracticeEnabled(exam.practiceEnabled);
+    } else if (open) {
+      setTitle('');
       setDescription('');
-      setPricingCategory(ExamPricingCategory.BASE);
-      setMonthlyFlatFee(0);
-      setYearlyFlatFee(0);
-      setMonthlyPerStudentFee(0);
-      setYearlyPerStudentFee(0);
+      setCategory(ExaminationCategory.CUSTOM);
+      setYear('');
+      setStatus(ContentStatus.DRAFT);
+      setDuration('');
+      setOrganizationId('platform');
+      setRandomizeQuestions(false);
+      setAllowCustomOrder(true);
+      setPracticeEnabled(false);
     }
   }, [open, exam]);
 
@@ -64,37 +98,36 @@ export function ExamFormDialog({ open, onOpenChange, exam, onSave }: ExamFormDia
     e.preventDefault();
     setLoading(true);
 
-    const apiPath = exam
-      ? `/api/admin/exams/${exam.id}` // Update
-      : '/api/admin/exams'; // Create
-      
+    const apiPath = exam ? `/api/admin/examinations/${exam.id}` : '/api/admin/examinations';
     const method = exam ? 'PATCH' : 'POST';
 
     try {
       const response = await fetch(apiPath, {
-        method: method,
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name,
-          shortName: shortName.toUpperCase(),
+          title,
           description,
-          pricingCategory,
-          monthlyFlatFee,
-          yearlyFlatFee,
-          monthlyPerStudentFee,
-          yearlyPerStudentFee,
+          category,
+          year: year || null,
+          status,
+          duration: duration || null,
+          organizationId: organizationId === 'platform' ? null : organizationId,
+          randomizeQuestions,
+          allowCustomOrder,
+          practiceEnabled,
         }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save exam');
+        const errorData = await response.json().catch(() => ({ error: 'Failed to save examination' }));
+        throw new Error(errorData.error || 'Failed to save examination');
       }
 
-      toast.success(`Exam ${exam ? 'updated' : 'created'} successfully!`);
-      onSave(); // Trigger the refresh
-    } catch (err: any) {
-      toast.error(err.message);
+      toast.success(`Examination ${exam ? 'updated' : 'created'} successfully`);
+      onSave();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save examination');
     } finally {
       setLoading(false);
     }
@@ -102,106 +135,127 @@ export function ExamFormDialog({ open, onOpenChange, exam, onSave }: ExamFormDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px]">
-        <form onSubmit={handleSubmit}>
+      <DialogContent className="sm:max-w-[640px]">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <DialogHeader>
-            <DialogTitle>{exam ? 'Edit Exam' : 'Add New Exam'}</DialogTitle>
+            <DialogTitle>{exam ? 'Edit Examination' : 'Create Examination'}</DialogTitle>
             <DialogDescription>
-              {exam ? 'Update the exam details.' : 'Create a new exam for users to select.'}
+              Manage platform-wide and organization-owned examinations from one place.
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Exam Name</Label>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="title">Title</Label>
               <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., WASSCE (WAEC)"
+                id="title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Practice Test 1"
                 required
               />
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="shortName">Short Name (Slug)</Label>
+              <Label>Category</Label>
+              <Select value={category} onValueChange={(value) => setCategory(value as ExaminationCategory)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.values(ExaminationCategory).map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={status} onValueChange={(value) => setStatus(value as ContentStatus)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.values(ContentStatus).map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="year">Year</Label>
               <Input
-                id="shortName"
-                value={shortName}
-                onChange={(e) => setShortName(e.target.value)}
-                placeholder="e.g., WAEC (no spaces)"
-                required
+                id="year"
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                placeholder="Optional"
+                inputMode="numeric"
               />
             </div>
+
             <div className="space-y-2">
+              <Label htmlFor="duration">Duration (minutes)</Label>
+              <Input
+                id="duration"
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                placeholder="Optional"
+                inputMode="numeric"
+              />
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label>Owner</Label>
+              <Select value={organizationId} onValueChange={setOrganizationId}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="platform">Platform</SelectItem>
+                  {organizations.map((organization) => (
+                    <SelectItem key={organization.id} value={organization.id}>
+                      {organization.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
               <Label htmlFor="description">Description</Label>
               <Textarea
                 id="description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="A short description of the exam."
+                placeholder="Describe the examination"
               />
             </div>
-
-            <div className="space-y-2">
-              <Label>Pricing Category</Label>
-              <Select value={pricingCategory} onValueChange={(value) => setPricingCategory(value as ExamPricingCategory)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ExamPricingCategory.BASE}>Base</SelectItem>
-                  <SelectItem value={ExamPricingCategory.SPECIAL}>Special</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {pricingCategory === ExamPricingCategory.SPECIAL && (
-              <div className="grid grid-cols-2 gap-4 rounded-xl border border-[color:var(--primary-border)] bg-[color:var(--primary-soft)] p-4">
-                <div className="space-y-2">
-                  <Label htmlFor="monthlyFlatFee">Monthly Flat Fee</Label>
-                  <Input
-                    id="monthlyFlatFee"
-                    type="number"
-                    value={monthlyFlatFee}
-                    onChange={(e) => setMonthlyFlatFee(Number(e.target.value))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="yearlyFlatFee">Yearly Flat Fee</Label>
-                  <Input
-                    id="yearlyFlatFee"
-                    type="number"
-                    value={yearlyFlatFee}
-                    onChange={(e) => setYearlyFlatFee(Number(e.target.value))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="monthlyPerStudentFee">Monthly Per Student</Label>
-                  <Input
-                    id="monthlyPerStudentFee"
-                    type="number"
-                    value={monthlyPerStudentFee}
-                    onChange={(e) => setMonthlyPerStudentFee(Number(e.target.value))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="yearlyPerStudentFee">Yearly Per Student</Label>
-                  <Input
-                    id="yearlyPerStudentFee"
-                    type="number"
-                    value={yearlyPerStudentFee}
-                    onChange={(e) => setYearlyPerStudentFee(Number(e.target.value))}
-                  />
-                </div>
-              </div>
-            )}
           </div>
-          
+
+          <div className="grid gap-3 rounded-2xl border border-[color:var(--primary-border)] bg-[color:var(--primary-soft)] p-4">
+            <div className="flex items-center justify-between rounded-xl border bg-white px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-slate-900">Allow practice access</p>
+                <p className="text-xs text-slate-500">Published content can appear in practice-ready flows.</p>
+              </div>
+              <Switch checked={practiceEnabled} onCheckedChange={setPracticeEnabled} />
+            </div>
+            <div className="flex items-center justify-between rounded-xl border bg-white px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-slate-900">Randomize questions</p>
+                <p className="text-xs text-slate-500">Keep this off unless random order is explicitly needed.</p>
+              </div>
+              <Switch checked={randomizeQuestions} onCheckedChange={setRandomizeQuestions} />
+            </div>
+            <div className="flex items-center justify-between rounded-xl border bg-white px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-slate-900">Preserve custom order</p>
+                <p className="text-xs text-slate-500">Manual paper ordering stays intact when enabled.</p>
+              </div>
+              <Switch checked={allowCustomOrder} onCheckedChange={setAllowCustomOrder} />
+            </div>
+          </div>
+
           <DialogFooter>
-            <Button
-              type="submit"
-              disabled={loading}
-            >
-              {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {exam ? 'Save Changes' : 'Create Exam'}
+            <Button type="submit" disabled={loading || !title.trim()}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {exam ? 'Save Changes' : 'Create Examination'}
             </Button>
           </DialogFooter>
         </form>

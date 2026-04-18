@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { QuestionWithOptions, StandardizedQuestion, IQuestionAdapter } from './types';
 import { QboardAdapter } from './adapters/qboard-adapter';
 
@@ -52,16 +53,14 @@ class QuestionService {
     // Prisma doesn't support native random easily.
     // Strategy: Fetch more than needed, then shuffle in memory.
     
-    const fetchLimit = limit ? limit * 2 : 50; // Fetch extra to ensure randomness
-
     let localQuestions = await prisma.question.findMany({
       where,
-      include: { 
-        options: true, 
+      include: {
+        options: true,
         section: true,
-        tags: true 
+        tags: true,
       },
-      take: fetchLimit,
+      ...(limit ? { take: year ? limit : limit * 2 } : {}),
     });
 
     // Randomize if no specific year was requested (Practice Mode)
@@ -88,7 +87,8 @@ class QuestionService {
         
         if (fetchedQuestions.length > 0) {
             const savedQuestions = await this.bulkCreate(fetchedQuestions);
-            return [...localQuestions, ...savedQuestions].slice(0, limit || 100);
+            const combined = [...localQuestions, ...savedQuestions];
+            return limit ? combined.slice(0, limit) : combined;
         }
     }
 

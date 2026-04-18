@@ -1,25 +1,19 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { questionService } from '@/lib/question-service/question-service';
-import { redirect, notFound } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, Loader2, Lock } from 'lucide-react';
 import { QuizClient } from '@/components/QuizClient';
 import { SanitizedQuestion, QuizMode } from '@/stores/quizStore';
-import { Question, Option, Section } from '@prisma/client'; 
 import { verifyUserAccess } from '@/lib/access-control';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { resolveStudentPracticePaperBySlug } from '@/lib/student-practice';
 
 interface QuizPageProps {
   params: Promise<{ slug: string[] }>;
   searchParams: Promise<{ mode?: string; tags?: string; limit?: string }>;
 }
-
-type QuestionWithRelations = Question & {
-    options: Option[];
-    section: Section | null;
-};
 
 async function getQuizData(slug: string[] | undefined, searchParams: { tags?: string; limit?: string }, userId: string) {
   try {
@@ -108,24 +102,27 @@ async function getQuizData(slug: string[] | undefined, searchParams: { tags?: st
 
     const [examSlug, subjectSlug, yearStr] = slug;
     
-    // Handle "Random" year logic
-    const year = yearStr === 'random' ? undefined : parseInt(yearStr);
-    if (yearStr !== 'random' && isNaN(year!)) throw new Error('Invalid year.');
+    if (yearStr === 'random') {
+      throw new Error('Topic-based random practice is currently unavailable for seeded paper sessions.');
+    }
+
+    const year = parseInt(yearStr);
+    if (isNaN(year)) throw new Error('Invalid year.');
 
     const exam = await prisma.exam.findFirst({
       where: { shortName: { equals: examSlug, mode: 'insensitive' } },
     });
 
-    // Handle "All" subjects logic
-    let subject = null;
-    if (subjectSlug !== 'all') {
-        subject = await prisma.subject.findFirst({
-            where: {
-                name: { equals: subjectSlug.replace(/-/g, ' '), mode: 'insensitive' },
-            },
-        });
-        if (!subject) throw new Error(`Subject not found.`);
+    if (subjectSlug === 'all') {
+      throw new Error('Please choose a specific subject for seeded practice.');
     }
+
+    const subject = await prisma.subject.findFirst({
+      where: {
+        name: { equals: subjectSlug.replace(/-/g, ' '), mode: 'insensitive' },
+      },
+    });
+    if (!subject) throw new Error(`Subject not found.`);
 
     if (!exam) throw new Error(`Exam not found.`);
 
@@ -140,23 +137,20 @@ async function getQuizData(slug: string[] | undefined, searchParams: { tags?: st
         throw new Error(`ACCESS_DENIED:${access.reason}`);
     }
 
-    // Call service with parsed params
-    const questions = (await questionService.getQuestions({
-        examId: exam.id,
-        subjectId: subject?.id,
-        year: year,
-        tags: searchParams.tags ? searchParams.tags.split(',') : undefined,
-        limit: searchParams.limit ? parseInt(searchParams.limit) : undefined
-    })) as QuestionWithRelations[];
-
-    if (questions.length === 0) {
-      throw new Error('No questions found for this selection.');
+    if (searchParams.tags || searchParams.limit) {
+      throw new Error('Topic-based random practice is currently unavailable for seeded paper sessions.');
     }
 
-    const sanitizedQuestions: SanitizedQuestion[] = questions.map((q) => ({
+    const paper = await resolveStudentPracticePaperBySlug(userId, examSlug, subjectSlug, year);
+
+    if (!paper || paper.questions.length === 0) {
+      throw new Error('No published seeded paper found for this selection.');
+    }
+
+    const sanitizedQuestions: SanitizedQuestion[] = paper.questions.map((q: any) => ({
       id: q.id,
       text: q.text,
-      year: q.year || (year || new Date().getFullYear()), // Fallback if question year is null
+      year: q.year || year,
       type: q.type,
       imageUrl: q.imageUrl,
       sectionId: q.sectionId,
@@ -164,7 +158,7 @@ async function getQuizData(slug: string[] | undefined, searchParams: { tags?: st
         instruction: q.section.instruction,
         passage: q.section.passage,
       } : null,
-      options: q.options.map((opt: Option) => ({
+      options: q.options.map((opt: any) => ({
         id: opt.id,
         text: opt.text,
       })),
@@ -174,11 +168,11 @@ async function getQuizData(slug: string[] | undefined, searchParams: { tags?: st
       data: {
         questions: sanitizedQuestions,
         quizDetails: {
-          examName: exam.name,
-          subjectName: subject?.name || 'Mixed Subjects',
-          year: year || new Date().getFullYear(),
+          examName: paper.exam.name,
+          subjectName: paper.subject?.name || subject.name,
+          year: paper.year || year,
         },
-        duration: exam.duration || 60 // Default duration if not assignment
+        duration: paper.duration || paper.exam.duration || exam.duration || 60
       },
       error: null,
     };

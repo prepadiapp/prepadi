@@ -434,8 +434,8 @@ model OrganizationExamination {
   allowCustomOrder  Boolean @default(true)
   duration          Int?
   practiceEnabled   Boolean @default(false)
-  organizationId    String
-  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId    String?
+  organization      Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   authorId          String
   author            User @relation(fields: [authorId], references: [id], onDelete: Cascade)
   papers            ExamPaper[]
