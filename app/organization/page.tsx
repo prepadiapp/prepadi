@@ -111,33 +111,6 @@ export default function OrgDashboardPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="border-slate-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" /> Publishing Workflow
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-600">
-            <div className="rounded-xl bg-slate-50 px-4 py-3">Draft examinations stay private until you publish them.</div>
-            <div className="rounded-xl bg-slate-50 px-4 py-3">Published examinations can be scheduled as assignments or exposed for practice.</div>
-            <div className="rounded-xl bg-slate-50 px-4 py-3">Question order stays fixed by default unless you intentionally enable randomization.</div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Clock3 className="h-5 w-5 text-amber-600" /> Delivery Snapshot
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-600">
-            <div className="rounded-xl bg-slate-50 px-4 py-3">Assignment scheduling now uses timezone-safe datetime handling.</div>
-            <div className="rounded-xl bg-slate-50 px-4 py-3">Content can be built as reusable examinations before it is assigned to students.</div>
-            <div className="rounded-xl bg-slate-50 px-4 py-3">The next step is deeper student performance history wired into the students area.</div>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

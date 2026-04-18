@@ -55,7 +55,8 @@ export async function GET(req: Request) {
         return {
             ...a,
             uiStatus,
-            score: isCompleted ? attempt.score : null
+            score: isCompleted ? attempt.score : null,
+            attemptId: isCompleted ? attempt.id : null,
         };
     });
 

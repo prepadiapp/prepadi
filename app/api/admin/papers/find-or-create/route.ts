@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthSession } from '@/lib/auth';
-import { UserRole } from '@prisma/client';
+import { ContentStatus, ExaminationCategory, UserRole } from '@prisma/client';
 import { questionService } from '@/lib/question-service/question-service';
+import { Prisma } from '@prisma/client';
 
 export async function POST(req: Request) {
   try {
@@ -58,20 +59,61 @@ export async function POST(req: Request) {
       examId,
       subjectId,
       year: parseInt(year),
-      limit: 60 
     });
 
     console.log(`[FIND-OR-CREATE] Found ${seededQuestions.length} questions.`);
 
     // C. Create the Paper and Connect Questions
+    const examinationTitle = `${exam.shortName} ${subject.name} ${year}`;
+    const existingExamination = await prisma.organizationExamination.findFirst({
+      where: {
+        organizationId: null,
+        title: examinationTitle,
+        year: parseInt(year),
+      },
+    });
+
+    let examinationId: string | undefined;
+
+    if (existingExamination) {
+      examinationId = existingExamination.id;
+    } else {
+      try {
+        const examination = await prisma.organizationExamination.create({
+          data: {
+            title: examinationTitle,
+            category: ExaminationCategory.YEARLY,
+            year: parseInt(year),
+            status: ContentStatus.DRAFT,
+            authorId: session.user.id,
+            organizationId: null,
+          },
+        });
+        examinationId = examination.id;
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2011'
+        ) {
+          console.warn(
+            '[PAPER_FIND_CREATE] Platform examination container could not be created yet; continuing with draft paper only.'
+          );
+        } else {
+          throw error;
+        }
+      }
+    }
+
     const newPaper = await prisma.examPaper.create({
       data: {
         title: paperTitle,
         year: parseInt(year),
         examId,
         subjectId,
+        examinationId: examinationId,
         authorId: session.user.id,
-        isPublic: false, // Default to Draft
+        isPublic: false,
+        status: ContentStatus.DRAFT,
         questions: {
           connect: seededQuestions.map(q => ({ id: q.id }))
         }

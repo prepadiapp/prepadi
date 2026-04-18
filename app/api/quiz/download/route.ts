@@ -1,6 +1,6 @@
 import { getAuthSession } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
+import { resolveStudentPracticePaperByIds } from '@/lib/student-practice';
 
 export async function POST(req: Request) {
   try {
@@ -15,51 +15,26 @@ export async function POST(req: Request) {
       return new NextResponse('Missing parameters', { status: 400 });
     }
 
-    // Fetch questions
-    const questions = await prisma.question.findMany({
-      where: {
-        examId,
-        subjectId: subjectId === 'all' ? undefined : subjectId,
-        year: parseInt(year),
-      },
-      include: {
-        options: {
-          select: { id: true, text: true, isCorrect: true } 
-        },
-        section: true,
-      },
-      orderBy: { order: 'asc' }
-    });
+    const paper = await resolveStudentPracticePaperByIds(
+      session.user.id,
+      examId,
+      subjectId,
+      parseInt(year)
+    );
 
-    if (questions.length === 0) {
+    if (!paper || paper.questions.length === 0) {
       return new NextResponse('No questions found for this exam', { status: 404 });
     }
 
-    // Deduplicate by text to handle DB messiness
-    const uniqueQuestions = [];
-    const seenTexts = new Set();
-
-    for (const q of questions) {
-        // Create a unique key based on text and type to be safe
-        const key = `${q.text}-${q.type}`;
-        if (!seenTexts.has(key)) {
-            seenTexts.add(key);
-            uniqueQuestions.push(q);
-        }
-    }
-
-    const exam = await prisma.exam.findUnique({ where: { id: examId }, select: { name: true } });
-    const subject = await prisma.subject.findUnique({ where: { id: subjectId }, select: { name: true } });
-
     // Format for offline storage
     const offlineData = {
-      id: `${examId}-${subjectId}-${year}`,
-      title: `${exam?.name} ${subject?.name || 'General'} ${year}`,
-      examName: exam?.name,
-      subjectName: subject?.name || 'General',
+      id: paper.id,
+      title: paper.title,
+      examName: paper.exam.name,
+      subjectName: paper.subject?.name || 'General',
       year: parseInt(year),
-      duration: 60, 
-      questions: uniqueQuestions.map(q => ({
+      duration: paper.duration || paper.exam.duration || 60,
+      questions: paper.questions.map((q: any) => ({
         id: q.id,
         text: q.text,
         type: q.type,

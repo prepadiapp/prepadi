@@ -81,8 +81,10 @@ export default function StudentAssessmentsPage() {
                               </Button>
                           )}
                           {exam.uiStatus === 'COMPLETED' && (
-                              <Button variant="outline" className="w-full text-blue-600 border-blue-200 bg-blue-50">
-                                  <CheckCircle2 className="w-4 h-4 mr-2"/> View Results
+                              <Button variant="outline" className="w-full text-blue-600 border-blue-200 bg-blue-50" asChild>
+                                  <Link href={`/dashboard/results/${exam.attemptId}`}>
+                                      <CheckCircle2 className="w-4 h-4 mr-2"/> View Results
+                                  </Link>
                               </Button>
                           )}
                           {exam.uiStatus === 'MISSED' && (

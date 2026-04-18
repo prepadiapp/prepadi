@@ -79,7 +79,13 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
           payload.paperLabel = paperLabel || null;
       }
       if (isAdmin) {
-          payload.isVerified = isVerified; 
+          payload.isVerified = isVerified;
+          payload.isPublic = isPublic;
+          payload.status = isPublic ? 'PUBLISHED' : 'DRAFT';
+          payload.duration = duration || null;
+          payload.randomizeQuestions = randomizeQuestions;
+          payload.allowCustomOrder = allowCustomOrder;
+          payload.paperLabel = paperLabel || null;
       }
 
       const res = await fetch(`${prefix}/papers/${paper.id}`, {
@@ -225,6 +231,76 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
                   </p>
                 </div>
                 <Switch id="order-mode" checked={allowCustomOrder} onCheckedChange={setAllowCustomOrder} />
+              </div>
+            </>
+          )}
+
+          {isAdmin && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="paperLabel-admin" className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Paper Label
+                </Label>
+                <Input
+                  id="paperLabel-admin"
+                  value={paperLabel}
+                  onChange={(e) => setPaperLabel(e.target.value)}
+                  placeholder="e.g. Paper 1"
+                />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <Clock3 className="w-3.5 h-3.5" /> Duration (minutes)
+                  </Label>
+                  <Input
+                    type="number"
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
+                    placeholder="Leave blank for untimed"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between space-x-2 border border-slate-200 p-3 rounded-lg bg-slate-50/30">
+                <div className="space-y-0.5">
+                  <Label htmlFor="public-mode-admin" className="text-sm font-medium text-slate-900 flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-slate-500"/> Published
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Draft content stays hidden from active practice and assignment use.
+                  </p>
+                </div>
+                <Switch
+                  id="public-mode-admin"
+                  checked={isPublic}
+                  onCheckedChange={setIsPublic}
+                />
+              </div>
+
+              <div className="flex items-center justify-between space-x-2 border border-slate-200 p-3 rounded-lg bg-slate-50/30">
+                <div className="space-y-0.5">
+                  <Label htmlFor="randomize-mode-admin" className="text-sm font-medium text-slate-900 flex items-center gap-2">
+                    <Shuffle className="w-4 h-4 text-slate-500" /> Randomize Questions
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Leave off unless a randomized experience is explicitly required.
+                  </p>
+                </div>
+                <Switch id="randomize-mode-admin" checked={randomizeQuestions} onCheckedChange={setRandomizeQuestions} />
+              </div>
+
+              <div className="flex items-center justify-between space-x-2 border border-slate-200 p-3 rounded-lg bg-slate-50/30">
+                <div className="space-y-0.5">
+                  <Label htmlFor="order-mode-admin" className="text-sm font-medium text-slate-900 flex items-center gap-2">
+                    <ListOrdered className="w-4 h-4 text-slate-500" /> Preserve Custom Order
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Keep author ordering intact by default.
+                  </p>
+                </div>
+                <Switch id="order-mode-admin" checked={allowCustomOrder} onCheckedChange={setAllowCustomOrder} />
               </div>
             </>
           )}

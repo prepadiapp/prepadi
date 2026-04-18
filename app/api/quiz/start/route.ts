@@ -1,6 +1,6 @@
 import { getAuthSession } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
+import { resolveStudentPracticePaperByIds } from '@/lib/student-practice';
 
 export async function POST(request: Request) {
   try {
@@ -10,67 +10,37 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { mode, examId, subjectId, year } = body;
+    const { examId, subjectId, year } = body;
 
-    // Build the query filter
-    const where: any = {};
-
-    if (examId) where.examId = examId;
-    
-    // Handle subject filtering (slug vs ID)
-    if (subjectId) {
-        // Check if it's a slug or ID
-        const subject = await prisma.subject.findFirst({
-            where: {
-                OR: [
-                    { id: subjectId },
-                    { name: { equals: subjectId, mode: 'insensitive' } } // Fallback for name matching
-                ]
-            }
-        });
-        
-        if (subject) {
-             where.subjectId = subject.id;
-        }
+    if (!examId || !subjectId || !year) {
+      return new NextResponse('Missing practice selection', { status: 400 });
     }
 
-    if (year) where.year = parseInt(year);
+    const paper = await resolveStudentPracticePaperByIds(
+      session.user.id,
+      examId,
+      subjectId,
+      parseInt(year, 10)
+    );
 
-    // Fetch questions
-    const questions = await prisma.question.findMany({
-      where,
-      take: 20, // Limit for practice mode
-      include: {
-        options: {
-          select: {
-            id: true,
-            text: true,
-          },
-        },
-        section: true,
-      },
-      orderBy: {
-        createdAt: 'desc', // Randomize later if needed
-      }
-    });
-
-    if (questions.length === 0) {
-        return new NextResponse("No questions found matching criteria", { status: 404 });
+    if (!paper || paper.questions.length === 0) {
+      return new NextResponse('No questions found matching criteria', { status: 404 });
     }
 
-    // Transform for frontend
-    const sanitizedQuestions = questions.map((q) => ({
+    const sanitizedQuestions = paper.questions.map((q: any) => ({
       id: q.id,
       text: q.text,
-      year: q.year || new Date().getFullYear(), // Fix: Fallback for nullable year
-      type: q.type,          
-      imageUrl: q.imageUrl,   
+      year: q.year || new Date().getFullYear(),
+      type: q.type,
+      imageUrl: q.imageUrl,
       sectionId: q.sectionId,
-      section: q.section ? {
-        instruction: q.section.instruction,
-        passage: q.section.passage
-      } : undefined,
-      options: q.options.map((opt) => ({
+      section: q.section
+        ? {
+            instruction: q.section.instruction,
+            passage: q.section.passage,
+          }
+        : undefined,
+      options: q.options.map((opt: any) => ({
         id: opt.id,
         text: opt.text,
       })),

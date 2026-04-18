@@ -14,9 +14,32 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, UploadCloud, FileText, CheckCircle, Trash2, AlertTriangle, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { Loader2, UploadCloud, FileText, CheckCircle, Trash2, AlertTriangle, Image as ImageIcon, Sparkles, Download } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+
+const TEMPLATE_TEXT = `SECTION: Answer Questions 1-3
+1. What is the capital of Nigeria?
+A. Lagos
+B. Abuja *
+C. Ibadan
+D. Kano
+EXPLANATION: Abuja is the capital city of Nigeria.
+TAGS: geography, nigeria
+
+2. Simplify x^2 + x^2.
+A. x^4
+B. 2x^2 *
+C. 2x
+D. x^2
+EXPLANATION: Like terms are added.
+TAGS: algebra
+
+3. Explain two causes of soil erosion.
+TYPE: THEORY
+MARKING_GUIDE: Any two valid causes such as rainfall runoff, wind action, or poor vegetation cover.
+EXPLANATION: Theory questions can include marking guides.
+TAGS: agriculture, environment`;
 
 export default function BulkUploadPage() {
   const router = useRouter();
@@ -62,6 +85,16 @@ export default function BulkUploadPage() {
     };
     loadData();
   }, []);
+
+  const downloadTemplate = () => {
+    const blob = new Blob([TEMPLATE_TEXT], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'prepwave-question-template.txt';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   // --- Handlers ---
 
@@ -223,6 +256,21 @@ export default function BulkUploadPage() {
         toast.error('Please select Exam, Subject, and Year first.');
         return;
     }
+
+    const invalidQuestion = parsedQuestions.find((question) => {
+      if (!question.text?.trim()) return true;
+      if (question.type === 'OBJECTIVE') {
+        const validOptions = question.options.filter((option) => option.text?.trim());
+        const correctCount = validOptions.filter((option) => option.isCorrect).length;
+        return validOptions.length < 2 || correctCount !== 1;
+      }
+      return false;
+    });
+
+    if (invalidQuestion) {
+      toast.error('One or more questions are incomplete. Check text, options, and the correct answer before saving.');
+      return;
+    }
       
     setLoading(true);
     try {
@@ -260,13 +308,26 @@ export default function BulkUploadPage() {
   return (
     <section className="space-y-6 pb-20">
       <Toaster richColors />
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Bulk Upload</h1>
-        {step === 2 && (
-          <Button variant="outline" onClick={() => setStep(1)}>
-            Back to Input
-          </Button>
-        )}
+      <div className="rounded-[2rem] border border-[color:var(--primary-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(241,245,255,0.92))] p-6 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Bulk Upload</h1>
+            <p className="max-w-2xl text-sm text-slate-600">
+              Upload with the supported text template first, then review every question before it enters the question bank.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button variant="outline" onClick={downloadTemplate} className="rounded-full">
+              <Download className="mr-2 h-4 w-4" />
+              Download Template
+            </Button>
+            {step === 2 && (
+              <Button variant="outline" onClick={() => setStep(1)}>
+                Back to Input
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* --- Configuration Card --- */}
@@ -293,6 +354,32 @@ export default function BulkUploadPage() {
             <Label>Year</Label>
             <Input type="number" value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-[color:var(--primary-border)]">
+        <CardHeader>
+          <CardTitle>Template Guide</CardTitle>
+          <CardDescription>Use this structure for the fastest non-AI upload flow.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Objective questions</AlertTitle>
+              <AlertDescription>
+                Number the question, add `A.` to `D.` options, and mark the correct option with `*`.
+              </AlertDescription>
+            </Alert>
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Theory questions</AlertTitle>
+              <AlertDescription>
+                Add `TYPE: THEORY` and include `MARKING_GUIDE:` when the answer is not objective.
+              </AlertDescription>
+            </Alert>
+          </div>
+          <Textarea value={TEMPLATE_TEXT} readOnly className="min-h-[220px] font-mono text-xs" />
         </CardContent>
       </Card>
 
@@ -389,7 +476,7 @@ export default function BulkUploadPage() {
             <CheckCircle className="h-4 w-4" />
             <AlertTitle>Success! Found {parsedQuestions.length} Questions</AlertTitle>
             <AlertDescription>
-              Please review all questions carefully before final upload.
+              Please review all questions carefully before final upload. Saving here does not publish the content automatically.
             </AlertDescription>
           </Alert>
 
