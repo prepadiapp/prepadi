@@ -3,7 +3,7 @@
 import { useState, Suspense, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { signIn, getSession, useSession } from 'next-auth/react';
+import { signIn, useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -18,7 +18,6 @@ import { Label } from '@/components/ui/label';
 import { GoogleIcon } from '@/components/GoogleIcon';
 import { Alert, AlertDescription } from '@/components/ui/alert'; 
 import { AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
-import { UserRole } from '@prisma/client';
 
 function LoginAlerts() {
   const searchParams = useSearchParams();
@@ -50,7 +49,7 @@ function LoginAlerts() {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
 
   const [email, setEmail] = useState('');
@@ -61,50 +60,47 @@ function LoginForm() {
 
   useEffect(() => {
     if (status === 'authenticated') {
-      router.replace(callbackUrl); 
+      router.replace(callbackUrl);
     }
   }, [status, router, callbackUrl]);
-
-  const handlePostLogin = async () => {
-    const session = await getSession();
-    if (session?.user?.role === 'ADMIN') {
-      router.push('/admin');
-    } else {
-      router.push('/dashboard');
-    }
-    router.refresh();
-  };
 
   const handleCredentialsLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
-    const result = await signIn('credentials', {
-      redirect: false,
-      email,
-      password,
-    });
+    try {
+      const result = await signIn('credentials', {
+        redirect: false,
+        callbackUrl,
+        email,
+        password,
+      });
 
-    setIsLoading(false);
+      if (result?.ok) {
+        window.location.assign(result.url || callbackUrl);
+        return;
+      }
 
-    if (result?.ok) {
-      await handlePostLogin();
-    } else {
-      if(result?.error === 'CredentialsSignin') {
+      setIsLoading(false);
+
+      if (result?.error === 'CredentialsSignin') {
         setError('Invalid email or password.');
       } else if (result?.error) {
         setError('An error occurred. Please try again.');
       } else {
         setError('Your email is not verified. Please check your inbox.');
       }
+    } catch (loginError) {
+      setIsLoading(false);
+      setError('An error occurred. Please try again.');
     }
   };
 
   const handleGoogleLogin = () => {
     setIsLoading(true);
     signIn('google', {
-      callbackUrl: '/dashboard', 
+      callbackUrl,
     });
   };
 

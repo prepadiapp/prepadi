@@ -1,13 +1,14 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  BarChart3,
   BookOpenCheck,
   Building2,
   CheckCircle2,
   Clock3,
+  Database,
+  GraduationCap,
+  LayoutDashboard,
   ShieldCheck,
-  Sparkles,
   Wifi,
 } from "lucide-react";
 
@@ -16,36 +17,51 @@ import { Button } from "@/components/ui/button";
 
 const uspCards = [
   {
-    title: "Exam-real practice",
+    title: "Timed exam practice",
     description:
-      "Students prepare with timed CBT sessions that feel close to the real WAEC, JAMB, and school test experience.",
+      "Students practise with seeded papers in a CBT flow that feels familiar, focused, and easier to trust.",
     icon: Clock3,
   },
   {
-    title: "Built for Nigerian learners",
+    title: "Content you control",
     description:
-      "The exam focus, tone, and study flow are tailored to how students, parents, and schools here actually prepare.",
-    icon: BookOpenCheck,
+      "Admins publish the papers students can actually access, keeping practice structured and reliable.",
+    icon: Database,
   },
   {
-    title: "Ready for schools too",
+    title: "Built for schools too",
     description:
-      "Organizations can manage papers, assignments, and student performance from one clean, modern platform.",
+      "Organizations can create examinations, schedule assignments, and review student performance from one workspace.",
     icon: Building2,
   },
 ];
 
 const featureList = [
-  "Timed mock exams and quick practice mode",
-  "Performance tracking that shows strengths and weak areas",
-  "Offline-ready experience for unstable connectivity",
-  "Assignment and paper management for schools and tutorial centres",
+  "Students practise only from seeded, published papers",
+  "Schools can create examinations, assignments, and subject-specific workflows",
+  "Progress and results stay easy to scan for learners and organizations",
+  "Offline-ready support helps students continue in low-connectivity moments",
 ];
 
-const trustPoints = [
-  "Practice smarter with structured subject-by-subject prep",
-  "Reduce exam anxiety with familiar CBT timing and flow",
-  "Help schools monitor performance from one dashboard",
+const heroHighlights = [
+  {
+    label: "For students",
+    value: "Practice with confidence",
+    note: "Timed papers, cleaner focus, and a calmer CBT experience.",
+    icon: GraduationCap,
+  },
+  {
+    label: "For schools",
+    value: "Run exams with structure",
+    note: "Create, publish, assign, and review from one dashboard.",
+    icon: LayoutDashboard,
+  },
+  {
+    label: "For real prep",
+    value: "Seeded and controlled",
+    note: "Only approved papers go live for student practice.",
+    icon: BookOpenCheck,
+  },
 ];
 
 export default function HomePage() {
@@ -82,21 +98,21 @@ export default function HomePage() {
           </header>
         </Reveal>
 
-        <div className="grid flex-1 items-center gap-14 py-14 lg:grid-cols-[1.06fr_0.94fr] lg:py-20">
+        <div className="grid flex-1 items-center gap-14 py-14 lg:grid-cols-[1.04fr_0.96fr] lg:py-20">
           <Reveal className="max-w-3xl" delay={80}>
             <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--primary-border)] bg-[color:var(--primary-soft)] px-4 py-2 text-sm font-medium text-[color:var(--primary-ink)]">
               <ShieldCheck className="h-4 w-4" />
-              WAEC, JAMB, NECO and school-based CBT preparation
+              WAEC, JAMB, NECO, and school-based CBT preparation
             </div>
 
             <h1 className="mt-6 max-w-4xl text-4xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-5xl lg:text-6xl">
-              A sharper way for Nigerian students and schools to prepare for exams.
+              Exam practice for Nigerian learners, with better structure for schools too.
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
-              Prepadi helps learners practise with confidence using timed CBT simulations,
-              clean performance tracking, and a simple study flow that feels modern, calm,
-              and easy to trust.
+              Prepadi gives students a simpler way to practise with timed papers, while
+              schools and tutorial centres manage examinations, assignments, and progress
+              from one clean platform.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -121,18 +137,19 @@ export default function HomePage() {
             </div>
 
             <div className="mt-10 grid gap-3 text-sm text-slate-600 sm:grid-cols-3">
-              {trustPoints.map((point, index) => (
+              {heroHighlights.map((item, index) => (
                 <Reveal
-                  key={point}
+                  key={item.label}
                   delay={180 + index * 90}
                   y={16}
                   className="rounded-2xl border border-white/60 bg-white/72 px-4 py-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)] backdrop-blur"
                 >
-                  <div className="mb-2 flex items-center gap-2 text-[color:var(--primary-ink)]">
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span className="font-medium text-slate-900">Why it matters</span>
+                  <div className="mb-3 flex items-center gap-2 text-[color:var(--primary-ink)]">
+                    <item.icon className="h-4 w-4" />
+                    <span className="font-medium text-slate-900">{item.label}</span>
                   </div>
-                  <p className="leading-6">{point}</p>
+                  <p className="text-base font-semibold text-slate-950">{item.value}</p>
+                  <p className="mt-2 leading-6">{item.note}</p>
                 </Reveal>
               ))}
             </div>
@@ -145,8 +162,8 @@ export default function HomePage() {
               <div className="rounded-[1.5rem] border border-[color:var(--primary-border)] bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(235,241,255,0.92))] p-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-[color:var(--primary-ink)]">Today’s focus</p>
-                    <h2 className="mt-1 text-2xl font-semibold text-slate-950">JAMB Physics Mock</h2>
+                    <p className="text-sm font-medium text-[color:var(--primary-ink)]">Today&apos;s practice</p>
+                    <h2 className="mt-1 text-2xl font-semibold text-slate-950">JAMB Physics 2013</h2>
                   </div>
                   <div className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_14px_30px_rgba(75,113,254,0.24)]">
                     82%
@@ -156,26 +173,26 @@ export default function HomePage() {
                 <div className="mt-6 space-y-4">
                   <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100 transition-transform duration-300 hover:-translate-y-1">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium text-slate-900">Exam simulation</span>
+                      <span className="font-medium text-slate-900">Timed CBT session</span>
                       <span className="text-muted-foreground">45 mins</span>
                     </div>
                     <div className="mt-3 h-2.5 rounded-full bg-[color:var(--primary-soft)]">
                       <div className="h-2.5 w-[76%] rounded-full bg-primary" />
                     </div>
                     <p className="mt-3 text-sm leading-6 text-slate-600">
-                      Familiar CBT layout, clear question flow, and less stress on exam day.
+                      Familiar question flow, clearer timing, and a steadier practice experience.
                     </p>
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="rounded-2xl bg-slate-950 p-4 text-white shadow-[0_24px_45px_rgba(15,23,42,0.18)] transition-transform duration-300 hover:-translate-y-1">
                       <div className="flex items-center gap-2 text-sm text-blue-100">
-                        <BarChart3 className="h-4 w-4" />
-                        Weak area insight
+                        <CheckCircle2 className="h-4 w-4" />
+                        Performance view
                       </div>
-                      <p className="mt-4 text-2xl font-semibold">Mechanics</p>
+                      <p className="mt-4 text-2xl font-semibold">Stronger review</p>
                       <p className="mt-2 text-sm leading-6 text-slate-300">
-                        Focus next on calculations, motion graphs, and interpretation speed.
+                        Students and schools can quickly see results, patterns, and areas to improve.
                       </p>
                     </div>
 
@@ -186,7 +203,7 @@ export default function HomePage() {
                       </div>
                       <p className="mt-4 text-2xl font-semibold text-slate-950">Offline support</p>
                       <p className="mt-2 text-sm leading-6 text-slate-600">
-                        Save exams locally and sync results later when the internet is stable.
+                        Learners can keep moving even when the internet is inconsistent.
                       </p>
                     </div>
                   </div>
@@ -209,10 +226,6 @@ export default function HomePage() {
                 <div className="mb-4 inline-flex rounded-2xl bg-[color:var(--primary-soft)] p-3 text-[color:var(--primary-ink)] shadow-sm">
                   <item.icon className="h-5 w-5" />
                 </div>
-                <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--primary-ink)]">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  What makes it strong
-                </div>
                 <h3 className="text-xl font-semibold tracking-tight text-slate-950">{item.title}</h3>
                 <p className="mt-3 max-w-md text-sm leading-7 text-slate-600">{item.description}</p>
               </div>
@@ -225,15 +238,15 @@ export default function HomePage() {
         <div className="mx-auto grid max-w-7xl gap-10 px-5 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:px-10">
           <Reveal className="max-w-xl">
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[color:var(--primary-ink)]">
-              Core value
+              How it fits
             </p>
             <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-              Serious exam prep, presented with clarity and calm.
+              One platform for practice, assignments, and exam operations.
             </h2>
             <p className="mt-5 text-base leading-8 text-slate-600">
-              We are not trying to make studying noisy. Prepadi is designed to feel simple,
-              premium, and focused so students can get into practice quickly and schools can
-              manage learning without friction.
+              Prepadi is built to stay simple on the surface while supporting the workflows
+              that matter underneath: curated paper publishing, structured student practice,
+              organization assignments, and easier progress tracking.
             </p>
           </Reveal>
 
@@ -260,11 +273,11 @@ export default function HomePage() {
             <div className="relative max-w-2xl">
               <p className="text-sm font-semibold uppercase tracking-[0.24em] text-blue-200">Start now</p>
               <h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-                Help more students walk into exam halls prepared.
+                Give students a cleaner way to prepare.
               </h2>
               <p className="mt-4 text-base leading-8 text-slate-300">
-                Whether you are a student practising for your next CBT or a school building a more
-                organized testing flow, Prepadi gives you a cleaner way to do it.
+                Whether you are practising on your own or running assessments for a school,
+                Prepadi helps you keep exam preparation structured, calm, and easier to manage.
               </p>
             </div>
 
@@ -282,7 +295,7 @@ export default function HomePage() {
                 variant="outline"
                 className="h-12 rounded-full border-white/20 bg-white/10 px-7 text-base font-semibold text-white hover:bg-white/14"
               >
-                <Link href="/dashboard">View Dashboard</Link>
+                <Link href="/login">Log In</Link>
               </Button>
             </div>
           </div>
