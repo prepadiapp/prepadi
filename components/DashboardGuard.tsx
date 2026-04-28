@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Loader2, Lock, RefreshCw, LogOut, CreditCard, Building } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,8 @@ import { useSession, signOut } from 'next-auth/react';
 export function DashboardGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+  const redirectingRef = useRef<string | null>(null);
   
   const [checking, setChecking] = useState(true);
   const [isLocked, setIsLocked] = useState(false);
@@ -28,10 +29,30 @@ export function DashboardGuard({ children }: { children: React.ReactNode }) {
     return new PaystackPop();
   };
 
+  const redirectTo = (target: string) => {
+    if (redirectingRef.current === target) {
+      return;
+    }
+
+    redirectingRef.current = target;
+    window.location.replace(target);
+  };
+
   const checkUserStatus = async () => {
     // Skip checks for public/special pages
     if (pathname.includes('/onboarding')) {
+      redirectingRef.current = null;
       setChecking(false);
+      return;
+    }
+
+    if (status === 'loading') {
+      setChecking(true);
+      return;
+    }
+
+    if (status === 'unauthenticated') {
+      redirectTo(`/login?callbackUrl=${encodeURIComponent(pathname)}`);
       return;
     }
 
@@ -40,35 +61,36 @@ export function DashboardGuard({ children }: { children: React.ReactNode }) {
       const data = await res.json();
 
       if (!data.authenticated) {
-        router.push(`/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        redirectTo(`/login?callbackUrl=${encodeURIComponent(pathname)}`);
         return;
       }
 
       // 1. ROLE REDIRECTION
       if (pathname.startsWith('/dashboard') && data.role === 'ADMIN') {
-        router.push('/admin');
+        redirectTo('/admin');
         return;
       }
       if (pathname.startsWith('/dashboard') && data.role === 'ORGANIZATION') {
-        router.push('/organization');
+        redirectTo('/organization');
         return;
       }
       if (pathname.startsWith('/organization') && data.role === 'STUDENT') {
-        router.push('/dashboard');
+        redirectTo('/dashboard');
         return;
       }
 
       // 2. ONBOARDING CHECK
       if (data.missingSubscription && data.role !== 'ADMIN') {
-        router.push('/onboarding');
+        redirectTo('/onboarding');
         return;
       }
 
       if (data.requiresOrgPlanRefresh) {
         if (data.role === 'ORGANIZATION') {
-          router.push('/organization/billing');
+          redirectTo('/organization/billing');
           return;
         }
+        redirectingRef.current = null;
         setIsLocked(true);
         setPendingPlanId(data.planId);
         setIsNewUser(false);
@@ -79,6 +101,7 @@ export function DashboardGuard({ children }: { children: React.ReactNode }) {
       }
 
       // 3. PAYMENT CHECK
+      redirectingRef.current = null;
       if (data.needsPayment) {
         setIsLocked(true);
         setPendingPlanId(data.planId);
@@ -93,15 +116,13 @@ export function DashboardGuard({ children }: { children: React.ReactNode }) {
 
     } catch (error) {
       console.error("Guard check failed", error);
-      // In case of error (network etc), we might want to redirect to login or show error
-      // Safest is to redirect to login if we can't verify status
-      router.push('/login'); 
+      redirectTo('/login');
     }
   };
 
   useEffect(() => {
     checkUserStatus();
-  }, [pathname, router]);
+  }, [pathname, status]);
 
   // Handle the Payment Flow
   const handlePayment = async () => {
