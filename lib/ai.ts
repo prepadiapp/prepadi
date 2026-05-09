@@ -1,177 +1,359 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 
-const apiKey = process.env.GEMINI_API_KEY;
-const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
-
-// Use the preview model available in the environment
-const MODEL_NAME = "gemini-2.0-flash";
-
-const GENERATION_CONFIG = {
-  temperature: 0.5, // Lower temperature for more consistent formatting
-  topP: 0.95,
-  topK: 64,
-  maxOutputTokens: 8192,
-  responseMimeType: "application/json",
+type ParsedOption = {
+  text: string;
+  isCorrect: boolean;
 };
+
+type ParsedQuestion = {
+  text: string;
+  type: "OBJECTIVE" | "THEORY";
+  options: ParsedOption[];
+  explanation?: string | null;
+  markingGuide?: string | null;
+  tags: string[];
+  section?: string | null;
+};
+
+type ParsedQuestionPayload = {
+  questions: ParsedQuestion[];
+};
+
+type TheoryGradePayload = {
+  isCorrect: boolean;
+  score: number;
+  feedback: string;
+};
+
+type TagPayload = {
+  tags: string[];
+};
+
+const openRouterApiKey = process.env.OPENROUTER_API_KEY;
+const openRouterClient = openRouterApiKey
+  ? new OpenAI({
+      apiKey: openRouterApiKey,
+      baseURL: "https://openrouter.ai/api/v1",
+      defaultHeaders: {
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+        "X-Title": "Prepadi",
+      },
+    })
+  : null;
+
+const MODEL_NAME = process.env.OPENROUTER_MODEL || "openai/gpt-4.1-mini";
+
+const DEFAULT_COMPLETION_CONFIG = {
+  model: MODEL_NAME,
+  temperature: 0.2,
+  response_format: { type: "json_object" as const },
+};
+
+function requireAiClient() {
+  if (!openRouterClient) {
+    throw new Error("OPENROUTER_API_KEY is not set");
+  }
+
+  return openRouterClient;
+}
+
+function extractTextContent(content: unknown) {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object" && "text" in part && typeof part.text === "string") {
+          return part.text;
+        }
+        return "";
+      })
+      .join("\n")
+      .trim();
+  }
+
+  return "";
+}
+
+function safeJsonParse<T>(raw: string): T {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    const fencedMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fencedMatch?.[1]) {
+      return JSON.parse(fencedMatch[1].trim()) as T;
+    }
+
+    const firstBrace = raw.indexOf("{");
+    const lastBrace = raw.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      return JSON.parse(raw.slice(firstBrace, lastBrace + 1)) as T;
+    }
+
+    throw new Error("AI response was not valid JSON");
+  }
+}
+
+function normalizeQuestionPayload(payload: ParsedQuestionPayload): ParsedQuestionPayload {
+  const questions = Array.isArray(payload?.questions) ? payload.questions : [];
+
+  return {
+    questions: questions
+      .map((question): ParsedQuestion => ({
+        text: String(question?.text || "").trim(),
+        type: question?.type === "THEORY" ? "THEORY" : "OBJECTIVE",
+        options: Array.isArray(question?.options)
+          ? question.options
+              .map((option) => ({
+                text: String(option?.text || "").trim(),
+                isCorrect: Boolean(option?.isCorrect),
+              }))
+              .filter((option) => option.text.length > 0)
+          : [],
+        explanation: question?.explanation ? String(question.explanation).trim() : null,
+        markingGuide: question?.markingGuide ? String(question.markingGuide).trim() : null,
+        tags: Array.isArray(question?.tags)
+          ? question.tags
+              .map((tag) => String(tag || "").trim())
+              .filter(Boolean)
+              .slice(0, 5)
+          : [],
+        section: question?.section ? String(question.section).trim() : null,
+      }))
+      .filter((question) => question.text.length > 0),
+  };
+}
+
+async function requestJson<T>(messages: Array<Record<string, unknown>>, maxTokens = 4000): Promise<T> {
+  const client = requireAiClient();
+
+  const response = await client.chat.completions.create({
+    ...DEFAULT_COMPLETION_CONFIG,
+    messages: messages as any,
+    max_tokens: maxTokens,
+  });
+
+  const rawContent = extractTextContent(response.choices[0]?.message?.content);
+
+  if (!rawContent) {
+    throw new Error("AI response was empty");
+  }
+
+  return safeJsonParse<T>(rawContent);
+}
 
 /**
  * Parses a base64 image of a question paper (supports multiple questions per page).
  */
 export async function parseQuestionImage(base64Image: string) {
-  if (!genAI) throw new Error("GEMINI_API_KEY is not set");
-
   try {
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
-    
-    const base64Data = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
-
     const prompt = `
-      Analyze this image of an exam paper. It may contain MULTIPLE questions.
-      Extract ALL questions found on the page into a structured JSON array.
-      
-      Return a JSON object with this structure:
-      {
-        "questions": [
-          {
-            "text": "Full question text",
-            "type": "OBJECTIVE" or "THEORY",
-            "options": [{"text": "Option A", "isCorrect": false}, ...], 
-            "explanation": "Brief explanation if visible",
-            "markingGuide": "Key points if theory",
-            "tags": ["tag1", "tag2"],
-            "section": "Instruction or Passage text if applicable"
-          }
-        ]
-      }
-      
-      Rules:
-      1. If objective, mark the correct answer if indicated, otherwise all false.
-      2. If questions share a common instruction (e.g., "Questions 1-5 refer to this passage"), include it in the "section" field for each question.
-      3. Generate 1-3 relevant subject tags for EACH question based on its content (e.g., "Algebra", "Cell Biology").
-    `;
+Analyze this image of an exam paper and extract every visible question.
 
-    const result = await model.generateContent({
-      contents: [
+Return JSON only in this exact structure:
+{
+  "questions": [
+    {
+      "text": "Full question text",
+      "type": "OBJECTIVE" or "THEORY",
+      "options": [{"text": "Option A", "isCorrect": false}],
+      "explanation": "Brief explanation if visible, otherwise empty string",
+      "markingGuide": "Marking guide or key points if visible, otherwise empty string",
+      "tags": ["1 to 3 short topic tags"],
+      "section": "Shared instruction or passage text if applicable, otherwise empty string"
+    }
+  ]
+}
+
+Rules:
+- Extract all questions on the page.
+- If the correct option is not explicitly shown, leave all option isCorrect values as false.
+- Preserve any shared passage/instruction in the "section" field for each related question.
+- If a question is essay/theory based, use type "THEORY" and leave options as an empty array.
+- Keep tags short and relevant.
+- Do not omit questions just because formatting is messy.
+`.trim();
+
+    const parsed = await requestJson<ParsedQuestionPayload>(
+      [
+        {
+          role: "system",
+          content:
+            "You extract exam questions from images into clean JSON for a CBT platform. Return JSON only.",
+        },
         {
           role: "user",
-          parts: [
-            { text: prompt },
-            { inlineData: { mimeType: "image/jpeg", data: base64Data } }
-          ]
-        }
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: base64Image } },
+          ],
+        },
       ],
-      generationConfig: GENERATION_CONFIG,
-    });
+      6000
+    );
 
-    const responseText = result.response.text();
-    return JSON.parse(responseText);
+    return normalizeQuestionPayload(parsed);
   } catch (error) {
-    console.error("Gemini Image Parse Error:", error);
+    console.error("OpenRouter Image Parse Error:", error);
     return { questions: [] };
   }
 }
 
 /**
  * Parses raw text block containing multiple questions using AI.
- * This is more flexible than Regex.
  */
 export async function parseBulkTextWithAI(rawText: string) {
-  if (!genAI) throw new Error("GEMINI_API_KEY is not set");
-
   try {
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
-
     const prompt = `
-      Analyze the following raw text which contains exam questions.
-      Extract all questions into a structured JSON array.
-      
-      Raw Text:
-      """
-      ${rawText.substring(0, 30000)} 
-      """
-      
-      Return a JSON object with this structure:
-      {
-        "questions": [
-          {
-            "text": "Full question text",
-            "type": "OBJECTIVE" or "THEORY",
-            "options": [{"text": "Option A", "isCorrect": false}, ...], 
-            "explanation": "Brief explanation if provided",
-            "markingGuide": "Key points if theory",
-            "tags": ["tag1", "tag2"],
-            "section": "Instruction or Passage text if applicable"
-          }
-        ]
-      }
-      
-      Rules:
-      1. Correct typos if obvious.
-      2. Identify the correct answer if marked (e.g., by asterisk, bold, or separate answer key at bottom).
-      3. Handle both multiple choice and essay questions.
-      4. CRITICAL: Generate 1-3 relevant topic tags for EACH question based on the content (e.g. "Geometry", "Photosynthesis", "Microeconomics"). Do not leave the tags array empty.
-    `;
+Analyze the following raw exam text and extract all questions into structured JSON.
 
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: GENERATION_CONFIG,
-    });
+Raw Text:
+"""
+${rawText.substring(0, 30000)}
+"""
 
-    const responseText = result.response.text();
-    return JSON.parse(responseText);
+Return JSON only in this exact structure:
+{
+  "questions": [
+    {
+      "text": "Full question text",
+      "type": "OBJECTIVE" or "THEORY",
+      "options": [{"text": "Option A", "isCorrect": false}],
+      "explanation": "Brief explanation if provided, otherwise empty string",
+      "markingGuide": "Marking guide or key points if provided, otherwise empty string",
+      "tags": ["1 to 3 short topic tags"],
+      "section": "Shared instruction or passage text if applicable, otherwise empty string"
+    }
+  ]
+}
+
+Rules:
+- Correct obvious OCR or formatting mistakes where needed.
+- Detect the correct answer only if it is clearly indicated.
+- Support both objective and theory questions.
+- Every question should have at least one useful topic tag if the subject matter is inferable.
+- Keep the output strictly as JSON.
+`.trim();
+
+    const parsed = await requestJson<ParsedQuestionPayload>(
+      [
+        {
+          role: "system",
+          content:
+            "You convert raw exam text into structured JSON for a CBT platform. Return JSON only.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      7000
+    );
+
+    return normalizeQuestionPayload(parsed);
   } catch (error) {
-    console.error("Gemini Text Parse Error:", error);
+    console.error("OpenRouter Text Parse Error:", error);
     return { questions: [] };
   }
 }
 
 /**
- * Grades a theory answer against a marking guide using Gemini.
+ * Grades a theory answer against a marking guide using AI.
  */
-export async function gradeTheoryAnswer(questionText: string, studentAnswer: string, markingGuide: string) {
-  if (!genAI) return { isCorrect: false, score: 0, feedback: "AI Configuration Error" };
-
+export async function gradeTheoryAnswer(
+  questionText: string,
+  studentAnswer: string,
+  markingGuide: string
+) {
   try {
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
-
     const prompt = `
-      You are a strict academic examiner. Grade this student's answer.
-      
-      Question: "${questionText}"
-      Marking Guide/Key Points: "${markingGuide}"
-      Student Answer: "${studentAnswer}"
+You are a strict but fair academic examiner. Grade the student's theory answer against the marking guide.
 
-      Return JSON:
-      {
-        "isCorrect": boolean (true if score >= 50),
-        "score": number (0-100),
-        "feedback": "Short constructive feedback explaining the score"
-      }
-    `;
+Question: ${questionText}
+Marking Guide: ${markingGuide}
+Student Answer: ${studentAnswer}
 
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: GENERATION_CONFIG,
-    });
+Return JSON only in this exact structure:
+{
+  "isCorrect": true,
+  "score": 0,
+  "feedback": "Short constructive feedback"
+}
 
-    return JSON.parse(result.response.text());
+Rules:
+- Score must be a number from 0 to 100.
+- Set isCorrect to true only if score is 50 or higher.
+- Feedback should be short, specific, and helpful.
+`.trim();
+
+    const result = await requestJson<TheoryGradePayload>(
+      [
+        {
+          role: "system",
+          content: "You grade theory answers and return JSON only.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      1200
+    );
+
+    const score = Number.isFinite(result?.score) ? Math.max(0, Math.min(100, Number(result.score))) : 0;
+
+    return {
+      isCorrect: score >= 50,
+      score,
+      feedback: String(result?.feedback || "No feedback generated.").trim(),
+    };
   } catch (error) {
-    console.error("Gemini Grading Error:", error);
+    console.error("OpenRouter Grading Error:", error);
     return { isCorrect: false, score: 0, feedback: "AI Service Unavailable" };
   }
 }
 
 export async function generateTags(questionText: string, subjectName: string): Promise<string[]> {
-  if (!genAI) return [];
   try {
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
-    const prompt = `Generate 1-3 short topic tags for this ${subjectName} question: "${questionText}". Return JSON: { "tags": ["tag1"] }`;
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: GENERATION_CONFIG,
-    });
-    return JSON.parse(result.response.text()).tags || [];
+    const prompt = `
+Generate 1 to 3 short topic tags for this ${subjectName} question.
+
+Question:
+${questionText}
+
+Return JSON only in this exact structure:
+{
+  "tags": ["tag1", "tag2"]
+}
+
+Rules:
+- Tags should be short and specific.
+- Do not use the subject name itself unless it is genuinely the best topic tag.
+- Return at least one tag when possible.
+`.trim();
+
+    const result = await requestJson<TagPayload>(
+      [
+        {
+          role: "system",
+          content: "You generate short topical tags for exam questions and return JSON only.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      600
+    );
+
+    return Array.isArray(result?.tags)
+      ? result.tags.map((tag) => String(tag || "").trim()).filter(Boolean).slice(0, 3)
+      : [];
   } catch (error) {
+    console.error("OpenRouter Tag Generation Error:", error);
     return [];
   }
 }
