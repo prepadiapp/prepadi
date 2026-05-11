@@ -15,7 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Loader2, UploadCloud, FileText, CheckCircle, Trash2, AlertTriangle, Image as ImageIcon, Sparkles, Download } from 'lucide-react';
-import { Toaster, toast } from 'sonner';
+import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 
 const TEMPLATE_TEXT = `SECTION: Answer Questions 1-3
@@ -57,6 +57,8 @@ export default function BulkUploadPage() {
   const [selectedExam, setSelectedExam] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [paperTitle, setPaperTitle] = useState('');
+  const [paperDuration, setPaperDuration] = useState('');
 
   // Input Modes
   const [useAI, setUseAI] = useState(false);
@@ -290,14 +292,18 @@ export default function BulkUploadPage() {
       const res = await fetch('/api/admin/questions/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questions: payload }),
+        body: JSON.stringify({
+          questions: payload,
+          paperTitle,
+          paperDuration: paperDuration ? Number(paperDuration) : null,
+        }),
       });
 
       if (!res.ok) throw new Error('Upload failed');
 
       const data = await res.json();
-      toast.success(`Successfully uploaded ${data.count} questions!`);
-      router.push('/admin/questions'); 
+      toast.success(`Successfully uploaded ${data.count} questions to a draft paper.`);
+      router.push(`/admin/papers/${data.paperId}`); 
     } catch (err) {
       toast.error('Failed to upload questions.');
     } finally {
@@ -307,7 +313,6 @@ export default function BulkUploadPage() {
 
   return (
     <section className="space-y-6 pb-20">
-      <Toaster richColors />
       <div className="rounded-[2rem] border border-[color:var(--primary-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(241,245,255,0.92))] p-6 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-2">
@@ -335,7 +340,7 @@ export default function BulkUploadPage() {
         <CardHeader>
           <CardTitle>1. Configuration</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
           <div className="space-y-2">
             <Label>Exam</Label>
             <Select value={selectedExam} onValueChange={setSelectedExam}>
@@ -353,6 +358,24 @@ export default function BulkUploadPage() {
           <div className="space-y-2">
             <Label>Year</Label>
             <Input type="number" value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} />
+          </div>
+          <div className="space-y-2 xl:col-span-2">
+            <Label>Paper Title</Label>
+            <Input
+              value={paperTitle}
+              onChange={(e) => setPaperTitle(e.target.value)}
+              placeholder="e.g. WAEC Biology 2024 Paper 1"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Duration (minutes)</Label>
+            <Input
+              type="number"
+              min="1"
+              value={paperDuration}
+              onChange={(e) => setPaperDuration(e.target.value)}
+              placeholder="Optional"
+            />
           </div>
         </CardContent>
       </Card>

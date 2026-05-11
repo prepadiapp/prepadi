@@ -117,7 +117,7 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px] p-6 gap-6">
+      <DialogContent className="max-h-[85vh] overflow-y-auto p-6 sm:max-w-[560px] gap-6">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold tracking-tight">Edit Paper Details</DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">

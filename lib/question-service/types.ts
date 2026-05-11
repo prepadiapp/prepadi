@@ -13,6 +13,7 @@ export type StandardizedQuestion = {
   dbSubjectId: string;
   type: QuestionType;
   sectionName?: string | null;
+  paperId?: string | null;
   options: {
     text: string;
     isCorrect: boolean;

@@ -213,6 +213,7 @@ class QuestionService {
                     imageUrl: q.imageUrl,
                     examId: q.dbExamId,
                     subjectId: q.dbSubjectId,
+                    paperId: q.paperId,
                     sectionId: sectionId,
                     organizationId: null,
                     options: {
