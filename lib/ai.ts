@@ -160,8 +160,8 @@ Return JSON only in this exact structure:
       "text": "Full question text",
       "type": "OBJECTIVE" or "THEORY",
       "options": [{"text": "Option A", "isCorrect": false}],
-      "explanation": "Brief explanation if visible, otherwise empty string",
-      "markingGuide": "Marking guide or key points if visible, otherwise empty string",
+      "explanation": "Short explanation of why the answer is correct",
+      "markingGuide": "Marking guide or key points for theory questions, otherwise empty string",
       "tags": ["1 to 3 short topic tags"],
       "section": "Shared instruction or passage text if applicable, otherwise empty string"
     }
@@ -170,9 +170,12 @@ Return JSON only in this exact structure:
 
 Rules:
 - Extract all questions on the page.
-- If the correct option is not explicitly shown, leave all option isCorrect values as false.
+- For objective questions, determine the single best correct answer using the question content and mark exactly one option with isCorrect = true.
+- Do not leave all options false unless the image is too unclear to read the options reliably.
+- Always provide a short, useful explanation for the chosen answer, even if the image itself does not include one.
 - Preserve any shared passage/instruction in the "section" field for each related question.
 - If a question is essay/theory based, use type "THEORY" and leave options as an empty array.
+- For theory questions, provide a concise marking guide when it can be reasonably inferred from the prompt.
 - Keep tags short and relevant.
 - Do not omit questions just because formatting is messy.
 `.trim();
