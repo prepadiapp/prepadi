@@ -236,12 +236,16 @@ export function QuestionAccordionItem({
         body: payload,
       });
 
-      if (!res.ok) throw new Error('Upload failed');
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || 'Upload failed');
+      }
       const data = await res.json();
       setFormData((prev) => ({ ...prev, imageUrl: data.url }));
       toast.success('Image uploaded');
     } catch (error) {
-      toast.error('Failed to upload image');
+      const message = error instanceof Error ? error.message : 'Failed to upload image';
+      toast.error(message);
     } finally {
       setIsUploadingImage(false);
     }
