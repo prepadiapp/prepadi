@@ -42,7 +42,7 @@ export default async function OrgPaperManagePage({ params }: PageProps) {
             orderBy: { createdAt: 'desc' },
           },
         },
-        orderBy: { order: 'asc' },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       },
     },
   });

@@ -23,7 +23,7 @@ export default async function PaperManagePage({ params }: PageProps) {
             section: true,
             tags: true
         },
-        orderBy: { order: 'asc' }
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }]
       }
     }
   });

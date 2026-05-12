@@ -289,6 +289,7 @@ export default function BulkUploadPage() {
         dbSubjectId: selectedSubject,
         type: q.type,
         sectionName: q.section,
+        order: parsedQuestions.findIndex((item) => item.id === q.id),
         options: q.options,
         tags: q.tags,
         markingGuide: q.type === 'THEORY' ? 'See Answer' : undefined // Basic fallback for theory
