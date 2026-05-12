@@ -36,6 +36,7 @@ D. x^2
 EXPLANATION: Like terms are added.
 TAGS: algebra
 
+#NO SECTION
 3. Explain two causes of soil erosion.
 TYPE: THEORY
 MARKING_GUIDE: Any two valid causes such as rainfall runoff, wind action, or poor vegetation cover.
@@ -400,6 +401,20 @@ export default function BulkUploadPage() {
               <AlertTitle>Theory questions</AlertTitle>
               <AlertDescription>
                 Add `TYPE: THEORY` and include `MARKING_GUIDE:` when the answer is not objective.
+              </AlertDescription>
+            </Alert>
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Section inheritance</AlertTitle>
+              <AlertDescription>
+                `SECTION:` or `INSTRUCTION:` applies to every question below it until a new section header or `#NO SECTION` appears.
+              </AlertDescription>
+            </Alert>
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Resetting sections</AlertTitle>
+              <AlertDescription>
+                Use `#NO SECTION` before the next question when the remaining questions should no longer inherit the earlier instruction.
               </AlertDescription>
             </Alert>
           </div>
