@@ -23,17 +23,12 @@ import {
   AlignLeft,
   Tag,
   Flag,
-  Bold,
-  Italic,
-  Underline,
-  List,
-  ListOrdered,
-  Sigma,
   UploadCloud,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { TagInput } from './TagInput';
+import { LightweightRichTextEditor } from './LightweightRichTextEditor';
 
 interface QuestionWithOptions extends Question {
   options: Option[];
@@ -71,9 +66,6 @@ export function QuestionAccordionItem({
 
   const isAdmin = apiPrefix === '/api/admin';
   const initialLoadRef = useRef(true);
-  const textRef = useRef<HTMLTextAreaElement | null>(null);
-  const explanationRef = useRef<HTMLTextAreaElement | null>(null);
-  const sectionRef = useRef<HTMLTextAreaElement | null>(null);
 
   const [formData, setFormData] = useState({
     text: question.text,
@@ -178,51 +170,6 @@ export function QuestionAccordionItem({
     setFormData({ ...formData, options: newOptions });
   };
 
-  const updateFieldFromRef = (ref: React.RefObject<HTMLTextAreaElement | null>, nextValue: string) => {
-    if (ref === explanationRef) {
-      setFormData((prev) => ({ ...prev, explanation: nextValue }));
-      return;
-    }
-
-    if (ref === sectionRef) {
-      setFormData((prev) => ({ ...prev, section: nextValue }));
-      return;
-    }
-
-    setFormData((prev) => ({ ...prev, text: nextValue }));
-  };
-
-  const applyFormat = (ref: React.RefObject<HTMLTextAreaElement | null>, before: string, after = before) => {
-    const element = ref.current;
-    if (!element) return;
-
-    const selectionStart = element.selectionStart ?? 0;
-    const selectionEnd = element.selectionEnd ?? 0;
-    const value = element.value;
-    const selectedText = value.slice(selectionStart, selectionEnd) || 'text';
-    const replacement = `${before}${selectedText}${after}`;
-    const nextValue = `${value.slice(0, selectionStart)}${replacement}${value.slice(selectionEnd)}`;
-
-    updateFieldFromRef(ref, nextValue);
-
-    requestAnimationFrame(() => {
-      element.focus();
-      const cursorPosition = selectionStart + replacement.length;
-      element.setSelectionRange(cursorPosition, cursorPosition);
-    });
-  };
-
-  const insertSymbol = (ref: React.RefObject<HTMLTextAreaElement | null>, symbol: string) => {
-    const element = ref.current;
-    if (!element) return;
-
-    const selectionStart = element.selectionStart ?? 0;
-    const selectionEnd = element.selectionEnd ?? 0;
-    const value = element.value;
-    const nextValue = `${value.slice(0, selectionStart)}${symbol}${value.slice(selectionEnd)}`;
-    updateFieldFromRef(ref, nextValue);
-  };
-
   const handleImageUpload = async (file?: File | null) => {
     if (!file) return;
 
@@ -250,40 +197,6 @@ export function QuestionAccordionItem({
       setIsUploadingImage(false);
     }
   };
-
-  const Toolbar = ({ targetRef }: { targetRef: React.RefObject<HTMLTextAreaElement | null> }) => (
-    <div className="flex flex-wrap items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-1">
-      <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => applyFormat(targetRef, '<b>', '</b>')}>
-        <Bold className="h-3.5 w-3.5" />
-      </Button>
-      <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => applyFormat(targetRef, '<i>', '</i>')}>
-        <Italic className="h-3.5 w-3.5" />
-      </Button>
-      <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => applyFormat(targetRef, '<u>', '</u>')}>
-        <Underline className="h-3.5 w-3.5" />
-      </Button>
-      <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => applyFormat(targetRef, '<ul>\n<li>', '</li>\n</ul>')}>
-        <List className="h-3.5 w-3.5" />
-      </Button>
-      <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => applyFormat(targetRef, '<ol>\n<li>', '</li>\n</ol>')}>
-        <ListOrdered className="h-3.5 w-3.5" />
-      </Button>
-      <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => insertSymbol(targetRef, 'π')}>
-        <Sigma className="h-3.5 w-3.5" />
-      </Button>
-      <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px]" onClick={() => insertSymbol(targetRef, '≤')}>
-        ≤
-      </Button>
-      <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px]" onClick={() => insertSymbol(targetRef, '√')}>
-        √
-      </Button>
-      <div className="ml-auto px-2 text-[10px] text-slate-500">
-        {autosaveState === 'saving' && 'Autosaving...'}
-        {autosaveState === 'saved' && 'Saved'}
-        {autosaveState === 'error' && 'Save failed'}
-      </div>
-    </div>
-  );
 
   return (
     <Draggable draggableId={question.id} index={index}>
@@ -354,24 +267,22 @@ export function QuestionAccordionItem({
                   <Label className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 md:text-xs">
                     <AlignLeft className="h-3.5 w-3.5" /> Section / Instruction (Optional)
                   </Label>
-                  <Toolbar targetRef={sectionRef} />
-                  <Textarea
-                    ref={sectionRef}
+                  <LightweightRichTextEditor
                     value={formData.section}
-                    onChange={(e) => setFormData({ ...formData, section: e.target.value })}
-                    className="min-h-[50px] border-slate-200 bg-white text-xs md:text-sm"
+                    onChange={(value) => setFormData({ ...formData, section: value })}
+                    rows={2}
+                    className="min-h-[76px] text-xs md:text-sm"
                     placeholder="e.g. Read the passage below and answer questions 1-5..."
                   />
                 </div>
 
                 <div className="space-y-1">
                   <Label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 md:text-xs">Question Content</Label>
-                  <Toolbar targetRef={textRef} />
-                  <Textarea
-                    ref={textRef}
+                  <LightweightRichTextEditor
                     value={formData.text}
-                    onChange={(e) => setFormData({ ...formData, text: e.target.value })}
-                    className="min-h-[100px] border-slate-200 bg-white text-xs leading-relaxed focus-visible:ring-primary/20 md:text-sm"
+                    onChange={(value) => setFormData({ ...formData, text: value })}
+                    rows={5}
+                    className="min-h-[140px] text-xs leading-relaxed md:text-sm"
                     placeholder="Enter question text here..."
                   />
                 </div>
@@ -455,12 +366,11 @@ export function QuestionAccordionItem({
 
                 <div className="space-y-1">
                   <Label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 md:text-xs">Explanation</Label>
-                  <Toolbar targetRef={explanationRef} />
-                  <Textarea
-                    ref={explanationRef}
+                  <LightweightRichTextEditor
                     value={formData.explanation}
-                    onChange={(e) => setFormData({ ...formData, explanation: e.target.value })}
-                    className="min-h-[60px] border-slate-200 bg-white text-xs md:text-sm"
+                    onChange={(value) => setFormData({ ...formData, explanation: value })}
+                    rows={4}
+                    className="min-h-[112px] text-xs md:text-sm"
                     placeholder="Why is this answer correct?"
                   />
                 </div>
