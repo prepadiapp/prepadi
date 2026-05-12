@@ -14,6 +14,7 @@ export type StandardizedQuestion = {
   type: QuestionType;
   sectionName?: string | null;
   paperId?: string | null;
+  order?: number;
   options: {
     text: string;
     isCorrect: boolean;

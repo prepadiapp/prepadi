@@ -24,6 +24,13 @@ export async function POST(req: Request) {
     const paper = await prisma.examPaper.findUnique({ where: { id: paperId } });
     if (!paper) return new NextResponse('Paper not found', { status: 404 });
 
+    const lastQuestionInPaper = await prisma.question.findFirst({
+        where: { paperId },
+        orderBy: [{ order: 'desc' }, { createdAt: 'desc' }],
+        select: { order: true },
+    });
+    const nextOrder = (lastQuestionInPaper?.order ?? -1) + 1;
+
     // Handle Section (Instruction/Passage)
     let sectionId = null;
     if (section && section.trim() !== '') {
@@ -44,13 +51,14 @@ export async function POST(req: Request) {
             // If year is not needed for Org logic, we just use a placeholder year (current).
             year: paper.year ?? new Date().getFullYear(),
             subjectId: paper.subjectId!, 
-            examId: paper.examId, 
-            organizationId: org.organizationId,
-            imageUrl,
-            explanation,
-            moderationStatus: ContentStatus.DRAFT,
-            sectionId,
-            options: {
+             examId: paper.examId, 
+             organizationId: org.organizationId,
+              imageUrl,
+              explanation,
+              moderationStatus: ContentStatus.DRAFT,
+              order: nextOrder,
+             sectionId,
+             options: {
                 create: options
             }
         },

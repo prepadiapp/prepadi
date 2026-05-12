@@ -214,6 +214,7 @@ class QuestionService {
                     examId: q.dbExamId,
                     subjectId: q.dbSubjectId,
                     paperId: q.paperId,
+                    order: q.order ?? 0,
                     sectionId: sectionId,
                     organizationId: null,
                     options: {

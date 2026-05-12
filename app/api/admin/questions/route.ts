@@ -167,6 +167,16 @@ export async function POST(request: Request) {
       }
     }
 
+    let nextOrder = 0;
+    if (paperId) {
+      const lastQuestionInPaper = await prisma.question.findFirst({
+        where: { paperId },
+        orderBy: [{ order: 'desc' }, { createdAt: 'desc' }],
+        select: { order: true },
+      });
+      nextOrder = (lastQuestionInPaper?.order ?? -1) + 1;
+    }
+
     // 5. Create Question
     const newQuestion = await prisma.question.create({
       data: {
@@ -181,6 +191,7 @@ export async function POST(request: Request) {
         imageUrl,
         organizationId: orgId, // Set for Org, null for Admin
         type: qType,
+        order: paperId ? nextOrder : 0,
         markingGuide: qType === QuestionType.THEORY ? markingGuide : null,
         options: qType === QuestionType.OBJECTIVE ? {
           createMany: {
