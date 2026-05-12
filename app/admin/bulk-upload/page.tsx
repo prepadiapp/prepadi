@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
+import { LightweightRichTextEditor } from '@/components/admin/LightweightRichTextEditor';
 import { Loader2, UploadCloud, FileText, CheckCircle, Trash2, AlertTriangle, Image as ImageIcon, Sparkles, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
@@ -511,11 +512,12 @@ export default function BulkUploadPage() {
                     <Label className="text-xs text-muted-foreground uppercase font-bold flex gap-2 items-center">
                         Question {index + 1} • {q.type}
                     </Label>
-                    <Input 
-                      value={q.section || ''} 
-                      onChange={(e) => updateQuestion(index, 'section', e.target.value)}
+                    <LightweightRichTextEditor
+                      value={q.section || ''}
+                      onChange={(value) => updateQuestion(index, 'section', value)}
                       placeholder="Section Instruction (Optional)"
-                      className="text-sm bg-muted/50 border-none h-8 mt-1"
+                      rows={2}
+                      className="min-h-[76px] bg-muted/20"
                     />
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => deleteQuestion(index)}>
@@ -524,10 +526,11 @@ export default function BulkUploadPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Textarea 
-                  value={q.text} 
-                  onChange={(e) => updateQuestion(index, 'text', e.target.value)}
-                  className="font-medium text-base min-h-[80px]"
+                <LightweightRichTextEditor
+                  value={q.text}
+                  onChange={(value) => updateQuestion(index, 'text', value)}
+                  className="min-h-[120px] font-medium text-base"
+                  rows={5}
                 />
 
                 {q.type === 'OBJECTIVE' && (
@@ -569,10 +572,11 @@ export default function BulkUploadPage() {
                    </div>
                    <div>
                       <Label className="text-xs">Explanation</Label>
-                      <Textarea 
-                        value={q.explanation} 
-                        onChange={(e) => updateQuestion(index, 'explanation', e.target.value)}
-                        className="text-sm h-10 bg-muted/20 min-h-[40px]"
+                      <LightweightRichTextEditor
+                        value={q.explanation}
+                        onChange={(value) => updateQuestion(index, 'explanation', value)}
+                        className="min-h-[110px] bg-muted/20"
+                        rows={4}
                       />
                    </div>
                 </div>
