@@ -43,6 +43,9 @@ MARKING_GUIDE: Any two valid causes such as rainfall runoff, wind action, or poo
 EXPLANATION: Theory questions can include marking guides.
 TAGS: agriculture, environment`;
 
+const stripFormatting = (value: string) =>
+  value.replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').trim();
+
 export default function BulkUploadPage() {
   const router = useRouter();
   
@@ -262,9 +265,9 @@ export default function BulkUploadPage() {
     }
 
     const invalidQuestion = parsedQuestions.find((question) => {
-      if (!question.text?.trim()) return true;
+      if (!stripFormatting(question.text || '')) return true;
       if (question.type === 'OBJECTIVE') {
-        const validOptions = question.options.filter((option) => option.text?.trim());
+        const validOptions = question.options.filter((option) => stripFormatting(option.text || ''));
         const correctCount = validOptions.filter((option) => option.isCorrect).length;
         return validOptions.length < 2 || correctCount !== 1;
       }

@@ -4,6 +4,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import { Prisma } from '@prisma/client';
+import DOMPurify from 'isomorphic-dompurify';
 
 
 type UserAnswerWithDetails = Prisma.UserAnswerGetPayload<{
@@ -21,6 +22,9 @@ interface QuizReviewProps {
   userAnswers: UserAnswerWithDetails[];
 }
 
+function SafeHTML({ html, className }: { html: string; className?: string }) {
+  return <div className={className} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />;
+}
 
 export function QuizReview({ userAnswers }: QuizReviewProps) {
   return (
@@ -42,13 +46,13 @@ export function QuizReview({ userAnswers }: QuizReviewProps) {
                     <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
                   )}
                   <span className="flex-1">
-                    Question {index + 1}: {question.text.substring(0, 50)}...
+                    Question {index + 1}: {question.text.replace(/<[^>]+>/g, '').substring(0, 50)}...
                   </span>
                 </div>
               </AccordionTrigger>
               <AccordionContent className="space-y-4">
                 {/* Full Question Text */}
-                <p className="text-base font-medium">{question.text}</p>
+                <SafeHTML html={question.text} className="text-base font-medium prose prose-sm max-w-none" />
                 
                 {/* Options List */}
                 <div className="space-y-2">
@@ -70,11 +74,11 @@ export function QuizReview({ userAnswers }: QuizReviewProps) {
                           'border-border'
                         }`}
                       >
-                        <p className="font-medium">
-                          {option.text}
+                        <div className="font-medium">
+                          <SafeHTML html={option.text} />
                           {isCorrect && <span className="text-xs font-bold text-green-600"> (Correct Answer)</span>}
                           {isSelected && !isCorrect && <span className="text-xs font-bold text-red-600"> (Your Answer)</span>}
-                        </p>
+                        </div>
                       </div>
                     );
                   })}
@@ -84,7 +88,7 @@ export function QuizReview({ userAnswers }: QuizReviewProps) {
                 {question.explanation && (
                   <div className="p-4 bg-muted/50 rounded-lg border">
                     <h4 className="font-semibold mb-2">Explanation</h4>
-                    <p className="text-sm text-muted-foreground">{question.explanation}</p>
+                    <SafeHTML html={question.explanation} className="text-sm text-muted-foreground prose prose-sm max-w-none" />
                   </div>
                 )}
               </AccordionContent>
