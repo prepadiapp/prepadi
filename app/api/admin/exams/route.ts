@@ -43,6 +43,7 @@ export async function POST(request: Request) {
       yearlyFlatFee,
       monthlyPerStudentFee,
       yearlyPerStudentFee,
+      isYearBased,
     } = body;
 
     if (!name || !shortName) {
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
         yearlyFlatFee: Number(yearlyFlatFee || 0),
         monthlyPerStudentFee: Number(monthlyPerStudentFee || 0),
         yearlyPerStudentFee: Number(yearlyPerStudentFee || 0),
+        isYearBased: isYearBased === undefined ? true : Boolean(isYearBased),
       },
     });
     return NextResponse.json(newExam);

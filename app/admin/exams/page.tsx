@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Plus, Pencil, Trash2, Filter, FolderKanban, Building2, BookCopy, Clock3 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Loader2, Plus, Pencil, Trash2, Filter, FolderKanban, Building2, BookCopy, Clock3, CalendarDays, Layers3 } from 'lucide-react';
 import { ExamFormDialog } from '@/components/admin/ExamFormDialog';
 import { Toaster, toast } from 'sonner';
 
@@ -22,6 +23,14 @@ interface OrganizationOption {
 interface SimpleOption {
   id: string;
   name: string;
+  shortName?: string;
+  description?: string | null;
+  isYearBased?: boolean;
+  pricingCategory?: string;
+  monthlyFlatFee?: number;
+  yearlyFlatFee?: number;
+  monthlyPerStudentFee?: number;
+  yearlyPerStudentFee?: number;
 }
 
 interface ExaminationRecord {
@@ -102,6 +111,28 @@ export default function ManageExamsPage() {
     }
   };
 
+  const handleExamYearModeToggle = async (exam: SimpleOption, isYearBased: boolean) => {
+    try {
+      const response = await fetch(`/api/admin/exams/${exam.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...exam,
+          shortName: exam.shortName || exam.name,
+          isYearBased,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update curriculum setting');
+      toast.success(`${exam.name} is now ${isYearBased ? 'year-based' : 'flexible'}`);
+      setExamOptions((current) =>
+        current.map((item) => (item.id === exam.id ? { ...item, isYearBased } : item))
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update curriculum setting');
+    }
+  };
+
   useEffect(() => {
     void fetchData();
   }, [query]);
@@ -175,6 +206,48 @@ export default function ManageExamsPage() {
             </Button>
           </div>
         </div>
+
+        <Card className="border-[color:var(--primary-border)]">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Layers3 className="h-4 w-4 text-primary" />
+              Curriculum exam settings
+            </CardTitle>
+            <CardDescription>
+              Decide which exam brands require years. Flexible exams hide year fields during upload and student practice.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {examOptions.map((exam) => (
+                <div key={exam.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">{exam.name}</p>
+                      <p className="mt-1 text-xs text-slate-500">{exam.shortName || 'No code'} curriculum pattern</p>
+                    </div>
+                    <Badge variant={exam.isYearBased === false ? 'secondary' : 'outline'} className="gap-1">
+                      <CalendarDays className="h-3 w-3" />
+                      {exam.isYearBased === false ? 'No year' : 'Yearly'}
+                    </Badge>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+                    <div>
+                      <p className="text-xs font-medium text-slate-800">Uses yearly papers</p>
+                      <p className="text-[11px] text-slate-500">
+                        {exam.isYearBased === false ? 'Students choose paper/test instead.' : 'Students choose a year.'}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={exam.isYearBased !== false}
+                      onCheckedChange={(checked) => void handleExamYearModeToggle(exam, checked)}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="border-[color:var(--primary-border)]">
           <CardHeader>

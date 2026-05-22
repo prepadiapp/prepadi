@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import mammoth from 'mammoth';
 import { parseBulkText, ParsedQuestion } from '@/lib/parser';
 import { TagInput } from '@/components/admin/TagInput'; 
-import { Exam, Subject, QuestionType } from '@prisma/client'; 
+import { ContentStatus, Exam, Subject, QuestionType } from '@prisma/client'; 
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -64,6 +64,17 @@ export default function BulkUploadPage() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [paperTitle, setPaperTitle] = useState('');
   const [paperDuration, setPaperDuration] = useState('');
+  const [destinationMode, setDestinationMode] = useState<'NEW_PAPER' | 'APPEND_TO_DRAFT' | 'REVISION_FROM_PUBLISHED'>('NEW_PAPER');
+  const [targetPaperId, setTargetPaperId] = useState('');
+  const [existingPapers, setExistingPapers] = useState<Array<{
+    id: string;
+    title: string;
+    year?: number | null;
+    status: ContentStatus;
+    questionCount: number;
+    updatedAt: string;
+  }>>([]);
+  const [loadingExistingPapers, setLoadingExistingPapers] = useState(false);
 
   // Input Modes
   const [useAI, setUseAI] = useState(false);
@@ -73,6 +84,9 @@ export default function BulkUploadPage() {
 
   // Result
   const [parsedQuestions, setParsedQuestions] = useState<ParsedQuestion[]>([]);
+  const selectedExamMeta = exams.find((exam: any) => exam.id === selectedExam) as (Exam & { isYearBased?: boolean }) | undefined;
+  const selectedExamIsYearBased = selectedExamMeta?.isYearBased !== false;
+  const selectedTargetPaper = existingPapers.find((paper) => paper.id === targetPaperId);
 
   // --- Fetch Config Data ---
   useEffect(() => {
@@ -93,6 +107,43 @@ export default function BulkUploadPage() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    const loadExistingPapers = async () => {
+      if (!selectedExam || !selectedSubject || (selectedExamIsYearBased && !selectedYear)) {
+        setExistingPapers([]);
+        setTargetPaperId('');
+        return;
+      }
+
+      setLoadingExistingPapers(true);
+      try {
+        const params = new URLSearchParams({
+          ownerType: 'PLATFORM',
+          examId: selectedExam,
+          subjectId: selectedSubject,
+        });
+        params.set('year', selectedExamIsYearBased ? String(selectedYear) : 'none');
+
+        const response = await fetch(`/api/admin/papers?${params.toString()}`);
+        if (!response.ok) throw new Error('Could not load matching papers');
+        const papers = await response.json();
+        setExistingPapers(papers);
+      } catch {
+        setExistingPapers([]);
+      } finally {
+        setLoadingExistingPapers(false);
+      }
+    };
+
+    void loadExistingPapers();
+  }, [selectedExam, selectedSubject, selectedYear, selectedExamIsYearBased]);
+
+  useEffect(() => {
+    setTargetPaperId('');
+    setDestinationMode('NEW_PAPER');
+    if (!selectedExamIsYearBased) setSelectedYear(new Date().getFullYear());
+  }, [selectedExam, selectedSubject, selectedExamIsYearBased]);
+
   const downloadTemplate = () => {
     const blob = new Blob([TEMPLATE_TEXT], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -105,19 +156,34 @@ export default function BulkUploadPage() {
 
   // --- Handlers ---
 
-  // 1. Handle DOCX File Upload
+  // 1. Handle document upload while preserving safe formatting where available.
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setProcessing(true);
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.extractRawText({ arrayBuffer });
-      setRawText(result.value);
-      toast.success('File text extracted successfully!');
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/admin/questions/extract-document', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to extract document');
+      }
+
+      setRawText(result.html || result.text || '');
+      toast.success(
+        result.fileType === 'pdf'
+          ? 'PDF text extracted. Please review formatting before processing.'
+          : 'Document formatting extracted successfully!'
+      );
     } catch (err) {
-      toast.error('Failed to read file. Make sure it is a valid .docx');
+      toast.error(err instanceof Error ? err.message : 'Failed to read file.');
     } finally {
       setProcessing(false);
     }
@@ -132,7 +198,7 @@ export default function BulkUploadPage() {
 
   // 3. Process Text (Regex or AI)
   const processText = async () => {
-      if (!rawText.trim()) {
+      if (!stripFormatting(rawText)) {
           toast.error('Please enter text or upload a file.');
           return;
       }
@@ -158,6 +224,7 @@ export default function BulkUploadPage() {
                       text: q.text,
                       options: q.options || [],
                       explanation: q.explanation || '',
+                      markingGuide: q.markingGuide || '',
                       tags: q.tags || [],
                       type: q.type as QuestionType,
                       section: q.section || null,
@@ -220,6 +287,7 @@ export default function BulkUploadPage() {
                           text: q.text,
                           options: q.options || [],
                           explanation: q.explanation || '',
+                          markingGuide: q.markingGuide || '',
                           tags: q.tags || [],
                           type: q.type as QuestionType,
                           section: q.section || null,
@@ -259,9 +327,14 @@ export default function BulkUploadPage() {
 
   // 6. Final Upload
   const handleUpload = async () => {
-    if (!selectedExam || !selectedSubject || !selectedYear) {
-        toast.error('Please select Exam, Subject, and Year first.');
+    if (!selectedExam || !selectedSubject || (selectedExamIsYearBased && !selectedYear)) {
+        toast.error(selectedExamIsYearBased ? 'Please select Exam, Subject, and Year first.' : 'Please select Exam and Subject first.');
         return;
+    }
+
+    if ((destinationMode === 'APPEND_TO_DRAFT' || destinationMode === 'REVISION_FROM_PUBLISHED') && !targetPaperId) {
+      toast.error('Please select the existing paper you want to use.');
+      return;
     }
 
     const invalidQuestion = parsedQuestions.find((question) => {
@@ -284,7 +357,7 @@ export default function BulkUploadPage() {
       const payload = parsedQuestions.map(q => ({
         text: q.text,
         explanation: q.explanation,
-        year: selectedYear,
+        year: selectedExamIsYearBased ? selectedYear : null,
         dbExamId: selectedExam,
         dbSubjectId: selectedSubject,
         type: q.type,
@@ -292,7 +365,7 @@ export default function BulkUploadPage() {
         order: parsedQuestions.findIndex((item) => item.id === q.id),
         options: q.options,
         tags: q.tags,
-        markingGuide: q.type === 'THEORY' ? 'See Answer' : undefined // Basic fallback for theory
+        markingGuide: q.type === 'THEORY' ? q.markingGuide || q.explanation || 'See Answer' : undefined
       }));
 
       const res = await fetch('/api/admin/questions/bulk', {
@@ -302,10 +375,16 @@ export default function BulkUploadPage() {
           questions: payload,
           paperTitle,
           paperDuration: paperDuration ? Number(paperDuration) : null,
+          destinationMode,
+          targetPaperId: targetPaperId || undefined,
+          copyExistingQuestions: true,
         }),
       });
 
-      if (!res.ok) throw new Error('Upload failed');
+      if (!res.ok) {
+        const data = await res.json().catch(async () => ({ error: await res.text() }));
+        throw new Error(data.error || 'Upload failed');
+      }
 
       const data = await res.json();
       toast.success(`Successfully uploaded ${data.count} questions to a draft paper.`);
@@ -351,7 +430,13 @@ export default function BulkUploadPage() {
             <Label>Exam</Label>
             <Select value={selectedExam} onValueChange={setSelectedExam}>
               <SelectTrigger><SelectValue placeholder="Select Exam" /></SelectTrigger>
-              <SelectContent>{exams.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
+              <SelectContent>
+                {exams.map((e: any) => (
+                  <SelectItem key={e.id} value={e.id}>
+                    {e.name} {e.isYearBased === false ? '(No year)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
@@ -361,16 +446,18 @@ export default function BulkUploadPage() {
               <SelectContent>{subjects.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Year</Label>
-            <Input type="number" value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} />
-          </div>
+          {selectedExamIsYearBased && (
+            <div className="space-y-2">
+              <Label>Year</Label>
+              <Input type="number" value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} />
+            </div>
+          )}
           <div className="space-y-2 xl:col-span-2">
             <Label>Paper Title</Label>
             <Input
               value={paperTitle}
               onChange={(e) => setPaperTitle(e.target.value)}
-              placeholder="e.g. WAEC Biology 2024 Paper 1"
+              placeholder={selectedExamIsYearBased ? 'e.g. WAEC Biology 2024 Paper 1' : 'e.g. Practice Test 1'}
             />
           </div>
           <div className="space-y-2">
@@ -383,6 +470,95 @@ export default function BulkUploadPage() {
               placeholder="Optional"
             />
           </div>
+          {selectedExam && (
+            <div className="md:col-span-2 xl:col-span-5">
+              <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+                <p className="text-sm font-semibold text-slate-900">
+                  {selectedExamIsYearBased ? 'Year-based curriculum' : 'Flexible curriculum'}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  {selectedExamIsYearBased
+                    ? 'This exam requires a year. Duplicate uploads for the same exam, subject, and year must append to a draft or create a revision.'
+                    : 'This exam does not use years. Students will choose the published paper title instead of a year.'}
+                </p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="overflow-hidden border-blue-100 shadow-sm">
+        <CardHeader>
+          <CardTitle>2. Upload Destination</CardTitle>
+          <CardDescription>
+            Decide whether this upload creates a new draft, adds to an existing draft, or creates a safe revision of a published paper.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            {[
+              { value: 'NEW_PAPER', title: 'New draft paper', copy: 'Use only when this paper does not already exist.' },
+              { value: 'APPEND_TO_DRAFT', title: 'Add to draft', copy: 'Best for continuing an unfinished draft upload.' },
+              { value: 'REVISION_FROM_PUBLISHED', title: 'Revise published', copy: 'Creates a draft copy so students are not affected yet.' },
+            ].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setDestinationMode(option.value as typeof destinationMode)}
+                className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md ${
+                  destinationMode === option.value
+                    ? 'border-blue-500 bg-blue-50 text-blue-950 shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-700'
+                }`}
+              >
+                <p className="text-sm font-semibold">{option.title}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{option.copy}</p>
+              </button>
+            ))}
+          </div>
+
+          {destinationMode !== 'NEW_PAPER' && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label>Matching existing paper</Label>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {loadingExistingPapers
+                      ? 'Loading matching papers...'
+                      : `${existingPapers.length} matching paper${existingPapers.length === 1 ? '' : 's'} found`}
+                  </p>
+                </div>
+                {selectedTargetPaper && (
+                  <Badge variant={selectedTargetPaper.status === ContentStatus.PUBLISHED ? 'default' : 'outline'}>
+                    {selectedTargetPaper.status}
+                  </Badge>
+                )}
+              </div>
+              <Select value={targetPaperId} onValueChange={setTargetPaperId}>
+                <SelectTrigger className="mt-3">
+                  <SelectValue placeholder="Select the paper to use" />
+                </SelectTrigger>
+                <SelectContent>
+                  {existingPapers
+                    .filter((paper) =>
+                      destinationMode === 'APPEND_TO_DRAFT'
+                        ? paper.status === ContentStatus.DRAFT
+                        : paper.status === ContentStatus.PUBLISHED
+                    )
+                    .map((paper) => (
+                      <SelectItem key={paper.id} value={paper.id}>
+                        {paper.title} - {paper.status.toLowerCase()} - {paper.questionCount} questions
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {destinationMode === 'REVISION_FROM_PUBLISHED' && (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                  We will copy the current published questions into a new draft, add this upload after them, and keep the live paper unchanged until you publish the revision.
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -430,14 +606,14 @@ export default function BulkUploadPage() {
       {step === 1 && (
         <Card>
           <CardHeader>
-            <CardTitle>2. Input Content</CardTitle>
+            <CardTitle>3. Input Content</CardTitle>
             <CardDescription>Choose how you want to add questions.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             
             <Tabs defaultValue="text">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="text">Text / Word File</TabsTrigger>
+                <TabsTrigger value="text">Text / Document</TabsTrigger>
                 <TabsTrigger value="images">Exam Paper Images</TabsTrigger>
               </TabsList>
               
@@ -452,17 +628,36 @@ export default function BulkUploadPage() {
                  </div>
 
                  <div className="grid gap-4">
-                    <Textarea 
-                        placeholder="Paste text here..." 
-                        rows={10}
+                    <div className="space-y-2">
+                      <Label>Paste or review source content</Label>
+                      <LightweightRichTextEditor
+                        placeholder="Paste questions here. Formatting like bold, italics, underline, superscript, and lists will be preserved."
+                        rows={8}
                         value={rawText}
-                        onChange={(e) => setRawText(e.target.value)}
-                        className="font-mono text-sm"
-                    />
+                        onChange={setRawText}
+                        className="min-h-[240px]"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Use the template markers for structure; formatting inside questions/options/explanations will carry into review.
+                      </p>
+                    </div>
                     <div className="text-center text-sm text-muted-foreground">- OR -</div>
                     <div className="flex justify-center">
-                        <Input type="file" accept=".docx" onChange={handleFileChange} className="max-w-sm" />
+                        <Input
+                          type="file"
+                          accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf"
+                          onChange={handleFileChange}
+                          className="max-w-sm"
+                          disabled={processing}
+                        />
                     </div>
+                    <Alert>
+                      <FileText className="h-4 w-4" />
+                      <AlertTitle>Document support</AlertTitle>
+                      <AlertDescription>
+                        DOCX preserves common formatting. Text-based PDFs are supported, but PDF formatting may need review after extraction.
+                      </AlertDescription>
+                    </Alert>
                  </div>
 
                  <Button onClick={processText} disabled={processing} className="w-full">
@@ -529,7 +724,7 @@ export default function BulkUploadPage() {
                 <div className="flex justify-between items-start">
                   <div className="space-y-1 flex-1">
                     <Label className="text-xs text-muted-foreground uppercase font-bold flex gap-2 items-center">
-                        Question {index + 1} • {q.type}
+                        Question {index + 1} - {q.type}
                     </Label>
                     <LightweightRichTextEditor
                       value={q.section || ''}
@@ -553,19 +748,22 @@ export default function BulkUploadPage() {
                 />
 
                 {q.type === 'OBJECTIVE' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     {q.options.map((opt, optIndex) => (
-                      <div key={optIndex} className={`flex items-center gap-2 p-2 rounded border ${opt.isCorrect ? 'border-green-500 bg-green-50' : ''}`}>
-                        <span className="font-bold text-sm w-6">{String.fromCharCode(65 + optIndex)}.</span>
-                        <Input 
-                          value={opt.text}
-                          onChange={(e) => {
+                      <div key={optIndex} className={`flex items-start gap-2 rounded border p-2 ${opt.isCorrect ? 'border-green-500 bg-green-50' : ''}`}>
+                        <span className="mt-3 w-6 text-sm font-bold">{String.fromCharCode(65 + optIndex)}.</span>
+                        <div className="flex-1">
+                          <LightweightRichTextEditor
+                            value={opt.text}
+                            onChange={(value) => {
                             const newOptions = [...q.options];
-                            newOptions[optIndex].text = e.target.value;
+                            newOptions[optIndex].text = value;
                             updateQuestion(index, 'options', newOptions);
                           }}
-                          className="h-8 text-sm"
-                        />
+                            rows={2}
+                            className="min-h-[76px] bg-white"
+                          />
+                        </div>
                         <input 
                           type="radio" 
                           name={`q-${q.id}`}
@@ -574,7 +772,7 @@ export default function BulkUploadPage() {
                             const newOptions = q.options.map((o, i) => ({ ...o, isCorrect: i === optIndex }));
                             updateQuestion(index, 'options', newOptions);
                           }}
-                          className="h-4 w-4 accent-green-600"
+                          className="mt-4 h-4 w-4 accent-green-600"
                         />
                       </div>
                     ))}

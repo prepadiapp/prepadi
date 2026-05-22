@@ -111,31 +111,22 @@ export async function POST(req: Request) {
         year: parsedYear,
         isPublic: true,
         organizationId: null,
+        questions: { some: {} },
       },
       include: {
         questions: {
           include: { options: true, tags: true },
+          orderBy: { order: "asc" },
         },
       },
     });
 
     if (globalPaper) {
       sourceQuestions = globalPaper.questions;
-    } else {
-      sourceQuestions = await prisma.question.findMany({
-        where: {
-          examId,
-          subjectId,
-          year: parsedYear,
-          organizationId: null,
-        },
-        include: { options: true, tags: true },
-        orderBy: { order: "asc" },
-      });
     }
 
     if (sourceQuestions.length === 0) {
-      return new NextResponse("This exam, subject, and year combination is not available in the global library.", { status: 404 });
+      return new NextResponse("This selection is not available as an existing published platform paper.", { status: 404 });
     }
 
     const [exam, subject] = await Promise.all([

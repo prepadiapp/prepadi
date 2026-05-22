@@ -19,6 +19,9 @@ export async function GET(request: Request) {
     const year = searchParams.get('year');
     const q = searchParams.get('q');
     const tagId = searchParams.get('tagId'); 
+    const type = searchParams.get('type');
+    const status = searchParams.get('status');
+    const flagged = searchParams.get('flagged');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || `${PAGE_SIZE}`);
     const skip = (page - 1) * limit;
@@ -28,6 +31,10 @@ export async function GET(request: Request) {
     if (subjectId && subjectId !== 'all') where.subjectId = subjectId;
     if (examId && examId !== 'all') where.examId = examId;
     if (year) where.year = parseInt(year);
+    if (type && type !== 'all') where.type = type;
+    if (status && status !== 'all') where.moderationStatus = status;
+    if (flagged === 'true') where.isFlagged = true;
+    if (flagged === 'false') where.isFlagged = false;
     if (q) {
       where.text = { contains: q, mode: 'insensitive' };
     }
@@ -38,11 +45,17 @@ export async function GET(request: Request) {
     const [questions, totalCount] = await prisma.$transaction([
       prisma.question.findMany({
         where,
-        orderBy: { subject: { name: 'asc' } },
+        orderBy: [
+          { subject: { name: 'asc' } },
+          { year: 'desc' },
+          { updatedAt: 'desc' },
+          { id: 'asc' },
+        ],
         include: {
           subject: { select: { name: true } },
           exam: { select: { shortName: true } },
           tags: { select: { name: true } },
+          paper: { select: { id: true, title: true, paperLabel: true, status: true } },
           options: true
         },
         skip: skip,

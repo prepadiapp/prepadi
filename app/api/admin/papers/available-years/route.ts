@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthSession } from '@/lib/auth';
 import { UserRole } from '@prisma/client';
-import { questionService } from '@/lib/question-service/question-service';
+import { prisma } from '@/lib/prisma';
 
 export async function GET(request: Request) {
   const session = await getAuthSession();
@@ -18,7 +18,24 @@ export async function GET(request: Request) {
       return NextResponse.json({ years: [] });
     }
 
-    const years = await questionService.getAvailableYears(examId, subjectId);
+    // External year discovery is paused with external question loading. Return
+    // only years already represented by platform-owned papers in the database.
+    const localPaperYears = await prisma.examPaper.findMany({
+      where: {
+        examId,
+        subjectId,
+        organizationId: null,
+        year: { not: null },
+      },
+      select: { year: true },
+      distinct: ['year'],
+      orderBy: { year: 'desc' },
+    });
+
+    const years = localPaperYears
+      .map((paper) => paper.year)
+      .filter((year): year is number => year !== null);
+
     return NextResponse.json({ years });
   } catch (error) {
     console.error('[ADMIN_AVAILABLE_YEARS_GET]', error);

@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { sanitizeRichHtml } from "@/lib/rich-text";
 
 type ParsedOption = {
   text: string;
@@ -102,27 +103,37 @@ function normalizeQuestionPayload(payload: ParsedQuestionPayload): ParsedQuestio
 
   return {
     questions: questions
-      .map((question): ParsedQuestion => ({
-        text: String(question?.text || "").trim(),
-        type: question?.type === "THEORY" ? "THEORY" : "OBJECTIVE",
-        options: Array.isArray(question?.options)
+      .map((question): ParsedQuestion => {
+        const type = question?.type === "THEORY" ? "THEORY" : "OBJECTIVE";
+        const correctSeen = { value: false };
+        const options = Array.isArray(question?.options)
           ? question.options
-              .map((option) => ({
-                text: String(option?.text || "").trim(),
-                isCorrect: Boolean(option?.isCorrect),
-              }))
+              .map((option) => {
+                const isCorrect = Boolean(option?.isCorrect) && !correctSeen.value;
+                if (isCorrect) correctSeen.value = true;
+                return {
+                  text: sanitizeRichHtml(String(option?.text || "").trim()),
+                  isCorrect,
+                };
+              })
               .filter((option) => option.text.length > 0)
-          : [],
-        explanation: question?.explanation ? String(question.explanation).trim() : null,
-        markingGuide: question?.markingGuide ? String(question.markingGuide).trim() : null,
-        tags: Array.isArray(question?.tags)
-          ? question.tags
-              .map((tag) => String(tag || "").trim())
-              .filter(Boolean)
-              .slice(0, 5)
-          : [],
-        section: question?.section ? String(question.section).trim() : null,
-      }))
+          : [];
+
+        return {
+          text: sanitizeRichHtml(String(question?.text || "").trim()),
+          type,
+          options: type === "OBJECTIVE" ? options : [],
+          explanation: question?.explanation ? sanitizeRichHtml(String(question.explanation).trim()) : null,
+          markingGuide: question?.markingGuide ? sanitizeRichHtml(String(question.markingGuide).trim()) : null,
+          tags: Array.isArray(question?.tags)
+            ? question.tags
+                .map((tag) => String(tag || "").trim())
+                .filter(Boolean)
+                .slice(0, 5)
+            : [],
+          section: question?.section ? sanitizeRichHtml(String(question.section).trim()) : null,
+        };
+      })
       .filter((question) => question.text.length > 0),
   };
 }
@@ -211,9 +222,10 @@ Rules:
 export async function parseBulkTextWithAI(rawText: string) {
   try {
     const prompt = `
-Analyze the following raw exam text and extract all questions into structured JSON.
+Analyze the following raw exam content and extract all questions into structured JSON.
+The content may be plain text or sanitized HTML from pasted/DOCX content.
 
-Raw Text:
+Raw Content:
 """
 ${rawText.substring(0, 30000)}
 """
@@ -225,7 +237,7 @@ Return JSON only in this exact structure:
       "text": "Full question text",
       "type": "OBJECTIVE" or "THEORY",
       "options": [{"text": "Option A", "isCorrect": false}],
-      "explanation": "Brief explanation if provided, otherwise empty string",
+      "explanation": "Short explanation of why the answer is correct",
       "markingGuide": "Marking guide or key points if provided, otherwise empty string",
       "tags": ["1 to 3 short topic tags"],
       "section": "Shared instruction or passage text if applicable, otherwise empty string"
@@ -235,7 +247,11 @@ Return JSON only in this exact structure:
 
 Rules:
 - Correct obvious OCR or formatting mistakes where needed.
-- Detect the correct answer only if it is clearly indicated.
+- Preserve useful formatting inside returned text fields using only these HTML tags: <b>, <strong>, <i>, <em>, <u>, <sub>, <sup>, <br>, <p>, <ol>, <ul>, <li>.
+- If the source underlines, bolds, italicizes, superscripts, or subscripts a word or symbol, keep that formatting in the returned question, option, explanation, markingGuide, or section field.
+- For objective questions, determine the single best correct answer using the question content and mark exactly one option with isCorrect = true.
+- Do not leave all options false unless the text is too incomplete or ambiguous to solve reliably.
+- Always provide a short, useful explanation for the chosen answer, even if the source text itself does not include one.
 - Support both objective and theory questions.
 - Every question should have at least one useful topic tag if the subject matter is inferable.
 - Keep the output strictly as JSON.

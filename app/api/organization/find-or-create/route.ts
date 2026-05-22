@@ -82,12 +82,13 @@ export async function POST(req: Request) {
         subjectId,
         year: parseInt(year),
         isPublic: true,
-        organizationId: null 
+        organizationId: null,
+        questions: { some: {} },
       },
       include: { 
           questions: {
               include: { options: true, tags: true },
-              take: 60 // Limit to 60 questions
+              orderBy: { order: 'asc' },
           } 
       }
     });

@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
-import { QuestionWithOptions, StandardizedQuestion, IQuestionAdapter } from './types';
-import { QboardAdapter } from './adapters/qboard-adapter';
+import type { QuestionWithOptions, StandardizedQuestion, IQuestionAdapter } from './types';
+
+const EXTERNAL_QUESTION_LOADING_ENABLED = false;
 
 interface GetQuestionsParams {
   examId: string;
@@ -15,9 +16,9 @@ class QuestionService {
   private adapters: Record<string, IQuestionAdapter>;
 
   constructor() {
-    this.adapters = {
-      'qboard': new QboardAdapter(),
-    };
+    // External question loading is intentionally paused. The platform now serves
+    // only papers/questions seeded through admin/org uploads and manual authoring.
+    this.adapters = {};
   }
 
   /**
@@ -78,7 +79,13 @@ class QuestionService {
         return localQuestions;
     }
 
+    if (!EXTERNAL_QUESTION_LOADING_ENABLED) {
+        return localQuestions;
+    }
+
     // --- 3. External Adapter Fallback ---
+    // Temporarily disabled by EXTERNAL_QUESTION_LOADING_ENABLED. Keep this block
+    // available for a future reactivation without exposing it to users today.
     // Only attempt if we have a specific subject and year (Adapters usually need structure)
     // If user asked for "Random Tags across All Subjects", adapters might not support it efficiently.
     if (subjectId && year && subjectId !== 'all') {
@@ -105,12 +112,17 @@ class QuestionService {
       distinct: ['year'],
     });
     
-    const adapterYearsResult = this.fetchAvailableYearsFromAdapters(examId, subjectId);
-    const [localYearsResult, adapterYears] = await Promise.all([localYearsQuery, adapterYearsResult]);
+    const localYearsResult = await localYearsQuery;
     
     const localYears = localYearsResult
         .map(q => q.year)
         .filter((y): y is number => y !== null); // Filter out nulls
+
+    if (!EXTERNAL_QUESTION_LOADING_ENABLED) {
+        return localYears.sort((a, b) => b - a);
+    }
+
+    const adapterYears = await this.fetchAvailableYearsFromAdapters(examId, subjectId);
 
     // Sort descending, handling any potential undefined/null safely
     const combined = Array.from(new Set([...localYears, ...adapterYears])).sort((a, b) => {
@@ -197,7 +209,9 @@ class QuestionService {
 
     for (const q of questions) {
         const exists = await prisma.question.findFirst({
-            where: { text: q.text, subjectId: q.dbSubjectId, examId: q.dbExamId, year: q.year },
+            where: q.paperId
+                ? { text: q.text, paperId: q.paperId }
+                : { text: q.text, subjectId: q.dbSubjectId, examId: q.dbExamId, year: q.year },
         });
 
         if (!exists) {
@@ -208,6 +222,7 @@ class QuestionService {
                 data: {
                     text: q.text,
                     explanation: q.explanation,
+                    markingGuide: q.markingGuide,
                     year: q.year,
                     type: q.type,
                     imageUrl: q.imageUrl,

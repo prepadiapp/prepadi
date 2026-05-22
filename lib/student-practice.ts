@@ -177,14 +177,31 @@ export async function getAccessiblePracticePapers(
   const filteredGlobal =
     selectedExamIds.length > 0 ? globalPapers.filter((paper) => selectedExamIds.includes(paper.examId)) : globalPapers;
 
-  return [...orgPapers, ...filteredGlobal].filter(
-    (paper) => paper.subjectId && paper.year && paper.questions.length > 0
+  const validPapers = [...orgPapers, ...filteredGlobal].filter(
+    (paper) => paper.subjectId && (paper.exam.isYearBased === false || paper.year) && paper.questions.length > 0
   );
+
+  const byIdentity = new Map<string, (typeof validPapers)[number]>();
+  validPapers.forEach((paper) => {
+    const isYearBased = paper.exam.isYearBased !== false;
+    const identity = [
+      paper.organizationId || 'platform',
+      paper.examId,
+      paper.subjectId,
+      isYearBased ? paper.year : paper.title.toLowerCase(),
+    ].join(':');
+
+    if (!byIdentity.has(identity)) {
+      byIdentity.set(identity, paper);
+    }
+  });
+
+  return Array.from(byIdentity.values());
 }
 
 export async function getAvailablePracticeExams(userId: string) {
   const papers = await getAccessiblePracticePapers(userId);
-  const examMap = new Map<string, { id: string; name: string; shortName: string }>();
+  const examMap = new Map<string, { id: string; name: string; shortName: string; isYearBased: boolean }>();
 
   papers.forEach((paper) => {
     if (!examMap.has(paper.exam.id)) {
@@ -192,6 +209,7 @@ export async function getAvailablePracticeExams(userId: string) {
         id: paper.exam.id,
         name: paper.exam.name,
         shortName: paper.exam.shortName,
+        isYearBased: paper.exam.isYearBased,
       });
     }
   });
@@ -217,9 +235,27 @@ export async function getAvailablePracticeSubjects(userId: string, examId: strin
 
 export async function getAvailablePracticeYears(userId: string, examId: string, subjectId: string) {
   const papers = await getAccessiblePracticePapers(userId, { examId, subjectId });
-  return Array.from(new Set(papers.map((paper) => paper.year).filter((year): year is number => !!year))).sort(
+  return Array.from(new Set(papers.filter((paper) => paper.exam.isYearBased !== false).map((paper) => paper.year).filter((year): year is number => !!year))).sort(
     (a, b) => b - a
   );
+}
+
+export async function getAvailablePracticePaperChoices(userId: string, examId: string, subjectId: string) {
+  const papers = await getAccessiblePracticePapers(userId, { examId, subjectId });
+  return papers
+    .filter((paper) => paper.exam.isYearBased === false)
+    .map((paper) => ({
+      id: paper.id,
+      title: paper.paperLabel || paper.title,
+      questionCount: paper.questions.length,
+      duration: paper.duration || paper.exam.duration || null,
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+export async function resolveStudentPracticePaperByPaperId(userId: string, paperId: string) {
+  const papers = await getAccessiblePracticePapers(userId);
+  return papers.find((paper) => paper.id === paperId) || null;
 }
 
 export async function resolveStudentPracticePaperByIds(

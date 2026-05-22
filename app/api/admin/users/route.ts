@@ -1,6 +1,6 @@
 import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { UserRole, PlanInterval } from '@prisma/client';
+import { UserRole, PlanInterval, Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
 const PAGE_SIZE = 20;
@@ -16,6 +16,97 @@ function calculateEndDate(interval: PlanInterval): Date | null {
     case 'LIFETIME': return null;
     default: return new Date();
   }
+}
+
+async function deleteAttemptsByWhere(tx: Prisma.TransactionClient, where: Prisma.QuizAttemptWhereInput) {
+    const attempts = await tx.quizAttempt.findMany({
+        where,
+        select: { id: true },
+    });
+    const attemptIds = attempts.map((attempt) => attempt.id);
+
+    if (attemptIds.length === 0) return;
+
+    await tx.userAnswer.deleteMany({ where: { quizAttemptId: { in: attemptIds } } });
+    await tx.quizAttempt.deleteMany({ where: { id: { in: attemptIds } } });
+}
+
+async function deleteQuestionsByWhere(tx: Prisma.TransactionClient, where: Prisma.QuestionWhereInput) {
+    const questions = await tx.question.findMany({
+        where,
+        select: { id: true },
+    });
+    const questionIds = questions.map((question) => question.id);
+
+    if (questionIds.length === 0) return;
+
+    await tx.userAnswer.deleteMany({ where: { questionId: { in: questionIds } } });
+    await tx.questionReviewNote.deleteMany({ where: { questionId: { in: questionIds } } });
+    await tx.option.deleteMany({ where: { questionId: { in: questionIds } } });
+    await tx.question.deleteMany({ where: { id: { in: questionIds } } });
+}
+
+async function deleteOrganizationTree(tx: Prisma.TransactionClient, organizationId: string) {
+    const [orgExams, orgSubjects, orgPapers, orgAssignments, orgSubscriptions] = await Promise.all([
+        tx.exam.findMany({ where: { organizationId }, select: { id: true } }),
+        tx.subject.findMany({ where: { organizationId }, select: { id: true } }),
+        tx.examPaper.findMany({ where: { organizationId }, select: { id: true } }),
+        tx.assignment.findMany({ where: { organizationId }, select: { id: true } }),
+        tx.subscription.findMany({ where: { organizationId }, select: { id: true } }),
+    ]);
+
+    const orgExamIds = orgExams.map((exam) => exam.id);
+    const orgSubjectIds = orgSubjects.map((subject) => subject.id);
+    const orgPaperIds = orgPapers.map((paper) => paper.id);
+    const orgAssignmentIds = orgAssignments.map((assignment) => assignment.id);
+    const orgSubscriptionIds = orgSubscriptions.map((subscription) => subscription.id);
+
+    await deleteAttemptsByWhere(tx, {
+        OR: [
+            ...(orgAssignmentIds.length ? [{ assignmentId: { in: orgAssignmentIds } }] : []),
+            ...(orgExamIds.length ? [{ examId: { in: orgExamIds } }] : []),
+            ...(orgSubjectIds.length ? [{ subjectId: { in: orgSubjectIds } }] : []),
+        ],
+    });
+
+    await tx.assignment.deleteMany({ where: { organizationId } });
+
+    await deleteQuestionsByWhere(tx, {
+        OR: [
+            { organizationId },
+            ...(orgPaperIds.length ? [{ paperId: { in: orgPaperIds } }] : []),
+            ...(orgExamIds.length ? [{ examId: { in: orgExamIds } }] : []),
+            ...(orgSubjectIds.length ? [{ subjectId: { in: orgSubjectIds } }] : []),
+        ],
+    });
+
+    await tx.examPaper.deleteMany({ where: { organizationId } });
+    await tx.organizationExamination.deleteMany({ where: { organizationId } });
+
+    if (orgSubscriptionIds.length) {
+        await tx.subscriptionExamAccess.deleteMany({
+            where: { subscriptionId: { in: orgSubscriptionIds } },
+        });
+    }
+    await tx.subscription.deleteMany({ where: { organizationId } });
+
+    await tx.orgInvite.deleteMany({ where: { organizationId } });
+    await tx.joinRequest.deleteMany({ where: { organizationId } });
+    await tx.user.updateMany({
+        where: { organizationId },
+        data: { organizationId: null },
+    });
+
+    if (orgExamIds.length) {
+        await tx.subscriptionExamAccess.deleteMany({ where: { examId: { in: orgExamIds } } });
+        await tx.exam.deleteMany({ where: { id: { in: orgExamIds } } });
+    }
+
+    if (orgSubjectIds.length) {
+        await tx.subject.deleteMany({ where: { id: { in: orgSubjectIds } } });
+    }
+
+    await tx.organization.delete({ where: { id: organizationId } });
 }
 
 /**
@@ -100,13 +191,49 @@ export async function DELETE(request: Request) {
     const id = searchParams.get('id');
 
     if (!id) return new NextResponse("User ID required", { status: 400 });
+    if (id === session.user.id) {
+        return new NextResponse("You cannot delete your own admin account", { status: 400 });
+    }
 
     try {
-        await prisma.user.delete({ where: { id } });
+        const targetUser = await prisma.user.findUnique({
+            where: { id },
+            include: {
+                ownedOrganization: { select: { id: true } },
+            },
+        });
+
+        if (!targetUser) {
+            return new NextResponse("User not found", { status: 404 });
+        }
+
+        await prisma.$transaction(async (tx) => {
+            if (targetUser.ownedOrganization) {
+                await deleteOrganizationTree(tx, targetUser.ownedOrganization.id);
+            }
+
+            await tx.transaction.updateMany({
+                where: { userId: id },
+                data: { userId: null },
+            });
+
+            await tx.questionReviewNote.deleteMany({ where: { authorId: id } });
+
+            const remainingAuthoredPapers = await tx.examPaper.count({ where: { authorId: id } });
+            const remainingAuthoredExaminations = await tx.organizationExamination.count({ where: { authorId: id } });
+            if (remainingAuthoredPapers > 0 || remainingAuthoredExaminations > 0) {
+                throw new Error("This user still owns platform content. Reassign or delete that content before deleting the account.");
+            }
+
+            await tx.user.delete({ where: { id } });
+        });
+
         return new NextResponse("User deleted");
     } catch (error) {
         console.error("Delete user error", error);
-        return new NextResponse("Failed to delete user", { status: 500 });
+        const message = error instanceof Error ? error.message : "Failed to delete user";
+        const status = message.includes("still owns platform content") ? 409 : 500;
+        return new NextResponse(message || "Failed to delete user", { status });
     }
 }
 
