@@ -14,13 +14,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { TagInput } from '@/components/admin/TagInput';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, ArrowLeft, Loader2, Plus, Trash2, Sparkles } from 'lucide-react';
-import { Toaster, toast } from 'sonner';
-import Link from 'next/link';
+import { toast } from 'sonner';
+import { LightweightRichTextEditor } from '@/components/admin/LightweightRichTextEditor';
 
 type FormOption = {
   id?: string;
@@ -106,7 +105,7 @@ function QuestionEditorContent() {
         setSubjectId(question.subjectId);
         setExamId(question.examId);
         setTags(question.tags?.map((t: any) => (typeof t === 'string' ? t : t.name)) || []);
-        setSection(question.section?.instruction || ''); 
+        setSection(typeof question.section === 'string' ? question.section : question.section?.instruction || ''); 
         setQType(question.type as QuestionType);
         setMarkingGuide(question.markingGuide || '');
 
@@ -150,15 +149,17 @@ function QuestionEditorContent() {
 
             if(!res.ok) throw new Error("Failed to parse image");
             const data = await res.json();
+            const parsedQuestion = Array.isArray(data.questions) ? data.questions[0] : data;
+            if (!parsedQuestion) throw new Error("No question detected in image");
             
-            setText(data.text);
-            if (data.type) setQType(data.type);
-            if (data.explanation) setExplanation(data.explanation);
-            if (data.markingGuide) setMarkingGuide(data.markingGuide);
-            if (data.tags && Array.isArray(data.tags)) setTags(data.tags);
+            setText(parsedQuestion.text || '');
+            if (parsedQuestion.type) setQType(parsedQuestion.type);
+            if (parsedQuestion.explanation) setExplanation(parsedQuestion.explanation);
+            if (parsedQuestion.markingGuide) setMarkingGuide(parsedQuestion.markingGuide);
+            if (parsedQuestion.tags && Array.isArray(parsedQuestion.tags)) setTags(parsedQuestion.tags);
             
-            if (data.options && Array.isArray(data.options) && data.options.length > 0) {
-                setOptions(data.options);
+            if (parsedQuestion.options && Array.isArray(parsedQuestion.options) && parsedQuestion.options.length > 0) {
+                setOptions(parsedQuestion.options);
             }
             toast.success("Question extracted by AI!");
         } catch (err) {
@@ -260,7 +261,7 @@ function QuestionEditorContent() {
         <Card className="bg-indigo-50 border-indigo-100">
             <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2 text-indigo-700">
-                    <Sparkles className="w-5 h-5" /> Gemini Auto-Fill
+                    <Sparkles className="w-5 h-5" /> AI Auto-Fill
                 </CardTitle>
                 <CardDescription>Upload an image to auto-fill this form.</CardDescription>
             </CardHeader>
@@ -323,13 +324,23 @@ function QuestionEditorContent() {
                 </div>
                 <div className="space-y-2">
                   <Label>Section (Optional)</Label>
-                  <Input value={section} onChange={(e) => setSection(e.target.value)} placeholder="e.g., Section A" />
+                  <LightweightRichTextEditor
+                    value={section}
+                    onChange={setSection}
+                    placeholder="e.g., Section A or shared instruction for this question"
+                    rows={2}
+                  />
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label>Question Text</Label>
-                <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={5} required />
+                <LightweightRichTextEditor
+                  value={text}
+                  onChange={setText}
+                  placeholder="Write the question. Use bold, italics, lists, or math symbols where needed."
+                  rows={6}
+                />
               </div>
 
               {qType === QuestionType.OBJECTIVE ? (
@@ -339,7 +350,15 @@ function QuestionEditorContent() {
                     {options.map((opt, index) => (
                       <div key={index} className="flex items-center gap-2">
                         <RadioGroupItem value={String(index)} id={`opt-${index}`} />
-                        <Input value={opt.text} onChange={(e) => handleOptionTextChange(index, e.target.value)} placeholder={`Option ${String.fromCharCode(65 + index)}`} required className="flex-1" />
+                        <div className="flex-1">
+                          <LightweightRichTextEditor
+                            value={opt.text}
+                            onChange={(value) => handleOptionTextChange(index, value)}
+                            placeholder={`Option ${String.fromCharCode(65 + index)}`}
+                            rows={2}
+                            className="min-h-[76px]"
+                          />
+                        </div>
                         {options.length > 2 && <Button type="button" variant="ghost" size="icon" onClick={() => removeOption(index)}><Trash2 className="w-4 h-4 text-red-500" /></Button>}
                       </div>
                     ))}
@@ -349,7 +368,12 @@ function QuestionEditorContent() {
               ) : (
                 <div className="space-y-2">
                     <Label>Marking Guide (AI)</Label>
-                    <Textarea value={markingGuide} onChange={(e) => setMarkingGuide(e.target.value)} rows={4} placeholder="Key points for grading..." />
+                    <LightweightRichTextEditor
+                      value={markingGuide}
+                      onChange={setMarkingGuide}
+                      placeholder="Key points for grading..."
+                      rows={4}
+                    />
                 </div>
               )}
 
@@ -360,7 +384,12 @@ function QuestionEditorContent() {
 
               <div className="space-y-2">
                 <Label>Explanation (Optional)</Label>
-                <Textarea value={explanation} onChange={(e) => setExplanation(e.target.value)} rows={3} />
+                <LightweightRichTextEditor
+                  value={explanation}
+                  onChange={setExplanation}
+                  placeholder="Add the explanation students should see after answering."
+                  rows={4}
+                />
               </div>
             </CardContent>
           </Card>

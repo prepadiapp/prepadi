@@ -3,6 +3,33 @@ import { prisma } from '@/lib/prisma';
 import { getAuthSession } from '@/lib/auth';
 import { ContentStatus, UserRole } from '@prisma/client';
 
+async function archivePublishedSiblings(paperId: string) {
+  const paper = await prisma.examPaper.findUnique({
+    where: { id: paperId },
+    include: { exam: true },
+  });
+
+  if (!paper) return;
+
+  const isYearBased = paper.exam.isYearBased !== false;
+  await prisma.examPaper.updateMany({
+    where: {
+      id: { not: paper.id },
+      organizationId: paper.organizationId,
+      examId: paper.examId,
+      subjectId: paper.subjectId,
+      status: ContentStatus.PUBLISHED,
+      ...(isYearBased
+        ? { year: paper.year }
+        : { year: null, title: { equals: paper.title, mode: 'insensitive' } }),
+    },
+    data: {
+      status: ContentStatus.ARCHIVED,
+      isPublic: false,
+    },
+  });
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -19,7 +46,7 @@ export async function GET(
       where: { id },
       include: {
         subject: { select: { id: true, name: true } },
-        exam: { select: { id: true, name: true, shortName: true } },
+        exam: { select: { id: true, name: true, shortName: true, isYearBased: true } },
         organization: { select: { id: true, name: true } },
         examination: {
           select: {
@@ -103,6 +130,10 @@ export async function PATCH(
       body.isPublic !== undefined
         ? Boolean(body.isPublic)
         : nextStatus === ContentStatus.PUBLISHED;
+
+    if (nextStatus === ContentStatus.PUBLISHED || isPublic) {
+      await archivePublishedSiblings(id);
+    }
 
     const updated = await prisma.examPaper.update({
       where: { id },

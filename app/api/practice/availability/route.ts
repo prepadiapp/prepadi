@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server';
 import { getAuthSession } from '@/lib/auth';
 import {
   getAvailablePracticeExams,
+  getAvailablePracticePaperChoices,
   getAvailablePracticeSubjects,
   getAvailablePracticeYears,
 } from '@/lib/student-practice';
+import { prisma } from '@/lib/prisma';
 
 export async function GET(request: Request) {
   try {
@@ -27,8 +29,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ subjects });
     }
 
+    const exam = await prisma.exam.findUnique({ where: { id: examId }, select: { isYearBased: true } });
+    if (exam?.isYearBased === false) {
+      const papers = await getAvailablePracticePaperChoices(session.user.id, examId, subjectId);
+      return NextResponse.json({ isYearBased: false, papers, years: [] });
+    }
+
     const years = await getAvailablePracticeYears(session.user.id, examId, subjectId);
-    return NextResponse.json({ years });
+    return NextResponse.json({ isYearBased: true, years, papers: [] });
   } catch (error) {
     console.error('[PRACTICE_AVAILABILITY_GET]', error);
     return new NextResponse('Internal Server Error', { status: 500 });

@@ -1,6 +1,6 @@
 import { getAuthSession } from '@/lib/auth';
 import { NextResponse } from 'next/server';
-import { resolveStudentPracticePaperByIds } from '@/lib/student-practice';
+import { resolveStudentPracticePaperByIds, resolveStudentPracticePaperByPaperId } from '@/lib/student-practice';
 
 export async function POST(request: Request) {
   try {
@@ -10,7 +10,38 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { examId, subjectId, year } = body;
+    const { examId, subjectId, year, paperId } = body;
+
+    const selectedPaper = paperId
+      ? await resolveStudentPracticePaperByPaperId(session.user.id, paperId)
+      : null;
+
+    if (paperId && (!selectedPaper || selectedPaper.questions.length === 0)) {
+      return new NextResponse('No questions found matching criteria', { status: 404 });
+    }
+
+    if (selectedPaper) {
+      const sanitizedQuestions = selectedPaper.questions.map((q: any) => ({
+        id: q.id,
+        text: q.text,
+        year: q.year || new Date().getFullYear(),
+        type: q.type,
+        imageUrl: q.imageUrl,
+        sectionId: q.sectionId,
+        section: q.section
+          ? {
+              instruction: q.section.instruction,
+              passage: q.section.passage,
+            }
+          : undefined,
+        options: q.options.map((opt: any) => ({
+          id: opt.id,
+          text: opt.text,
+        })),
+      }));
+
+      return NextResponse.json({ questions: sanitizedQuestions });
+    }
 
     if (!examId || !subjectId || !year) {
       return new NextResponse('Missing practice selection', { status: 400 });

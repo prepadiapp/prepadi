@@ -26,6 +26,7 @@ export async function PATCH(
       yearlyFlatFee,
       monthlyPerStudentFee,
       yearlyPerStudentFee,
+      isYearBased,
     } = body;
 
     if (!id) {
@@ -46,6 +47,7 @@ export async function PATCH(
         yearlyFlatFee: Number(yearlyFlatFee || 0),
         monthlyPerStudentFee: Number(monthlyPerStudentFee || 0),
         yearlyPerStudentFee: Number(yearlyPerStudentFee || 0),
+        isYearBased: isYearBased === undefined ? true : Boolean(isYearBased),
       },
     });
     return NextResponse.json(updatedExam);

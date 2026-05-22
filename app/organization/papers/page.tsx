@@ -484,8 +484,8 @@ export default function OrgPapersPage() {
 
             <Card className="border-slate-200 bg-white/95">
               <CardHeader>
-                <CardTitle className="text-lg text-slate-900">Clone Global Content</CardTitle>
-                <CardDescription>Reuse public yearly content as a draft organization examination before refining it.</CardDescription>
+                <CardTitle className="text-lg text-slate-900">Clone Platform Paper</CardTitle>
+                <CardDescription>Reuse an existing published platform paper as a draft organization examination before refining it.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-4">
@@ -547,7 +547,7 @@ export default function OrgPapersPage() {
                   Clone Into Draft Library
                 </Button>
                 <p className="text-xs leading-5 text-slate-500">
-                  This pulls the selected global paper or question set into your organization as a draft examination, so your team can refine it before publishing.
+                  This copies only existing published platform papers into your organization as drafts. External question-source loading is not used.
                 </p>
                 {cloneCatalog.length === 0 && (
                   <p className="text-xs leading-5 text-amber-600">

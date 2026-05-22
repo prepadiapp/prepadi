@@ -1,6 +1,6 @@
 import { getAuthSession } from '@/lib/auth';
 import { NextResponse } from 'next/server';
-import { resolveStudentPracticePaperByIds } from '@/lib/student-practice';
+import { resolveStudentPracticePaperByIds, resolveStudentPracticePaperByPaperId } from '@/lib/student-practice';
 
 export async function POST(req: Request) {
   try {
@@ -9,7 +9,31 @@ export async function POST(req: Request) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    const { examId, subjectId, year } = await req.json();
+    const { examId, subjectId, year, paperId } = await req.json();
+
+    if (paperId) {
+      const paper = await resolveStudentPracticePaperByPaperId(session.user.id, paperId);
+      if (!paper || paper.questions.length === 0) {
+        return new NextResponse('No questions found for this exam', { status: 404 });
+      }
+
+      return NextResponse.json({
+        id: paper.id,
+        title: paper.title,
+        examName: paper.exam.name,
+        subjectName: paper.subject?.name || 'General',
+        year: paper.year || new Date().getFullYear(),
+        duration: paper.duration || paper.exam.duration || 60,
+        questions: paper.questions.map((q: any) => ({
+          id: q.id,
+          text: q.text,
+          type: q.type,
+          options: q.options,
+          section: q.section ? { instruction: q.section.instruction, passage: q.section.passage } : null,
+          imageUrl: q.imageUrl
+        }))
+      });
+    }
 
     if (!examId || !subjectId || !year) {
       return new NextResponse('Missing parameters', { status: 400 });

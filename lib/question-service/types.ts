@@ -7,7 +7,8 @@ export type QuestionWithOptions = Question & {
 export type StandardizedQuestion = {
   text: string;
   explanation: string | null;
-  year: number;
+  markingGuide?: string | null;
+  year: number | null;
   tags?: string[];
   dbExamId: string;
   dbSubjectId: string;

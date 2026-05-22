@@ -346,15 +346,18 @@ export function QuestionAccordionItem({
                             />
                             <Check className="pointer-events-none absolute h-2.5 w-2.5 text-white opacity-0 peer-checked:opacity-100 md:h-3 md:w-3" />
                           </div>
-                          <Input
-                            value={opt.text}
-                            onChange={(e) => updateOption(i, 'text', e.target.value)}
-                            className={cn(
-                              'h-8 flex-1 bg-transparent text-xs transition-colors md:h-9 md:text-sm',
-                              opt.isCorrect ? 'border-green-500 bg-green-50/30 ring-1 ring-green-500/20' : 'border-slate-200 focus-visible:border-slate-400'
-                            )}
-                            placeholder={`Option ${String.fromCharCode(65 + i)}`}
-                          />
+                          <div className="flex-1">
+                            <LightweightRichTextEditor
+                              value={opt.text}
+                              onChange={(value) => updateOption(i, 'text', value)}
+                              rows={2}
+                              className={cn(
+                                'min-h-[76px] bg-transparent text-xs transition-colors md:text-sm',
+                                opt.isCorrect ? 'border-green-500 bg-green-50/30 ring-1 ring-green-500/20' : 'border-slate-200 focus-visible:border-slate-400'
+                              )}
+                              placeholder={`Option ${String.fromCharCode(65 + i)}`}
+                            />
+                          </div>
                           <Button type="button" variant="ghost" size="icon" onClick={() => removeOption(i)} className="h-7 w-7 text-slate-300 hover:bg-red-50 hover:text-red-500 md:h-8 md:w-8">
                             <X className="h-3.5 w-3.5 md:h-4 md:w-4" />
                           </Button>

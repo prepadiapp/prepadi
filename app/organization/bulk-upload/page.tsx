@@ -95,8 +95,9 @@ export default function OrgBulkUploadPage() {
       setProgress(60); 
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Upload failed");
+        const contentType = res.headers.get('content-type') || '';
+        const errorData = contentType.includes('application/json') ? await res.json() : { error: await res.text() };
+        throw new Error(errorData.error || errorData.message || "Upload failed");
       }
 
       const data = await res.json();
@@ -188,7 +189,7 @@ export default function OrgBulkUploadPage() {
                 <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors cursor-pointer relative group">
                     <input 
                         type="file" 
-                        accept=".docx" 
+                        accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf" 
                         onChange={handleFileChange}
                         className="absolute inset-0 opacity-0 cursor-pointer z-10"
                     />
@@ -198,7 +199,7 @@ export default function OrgBulkUploadPage() {
                     <p className="text-sm font-medium text-slate-900">
                         {file ? <span className="text-blue-600">{file.name}</span> : "Drop your exam file here"}
                     </p>
-                    <p className="text-xs text-slate-500 mt-1">.docx files supported (Max 5MB)</p>
+                    <p className="text-xs text-slate-500 mt-1">.docx and text-based .pdf files supported (Max 5MB)</p>
                 </div>
             </div>
 
@@ -260,7 +261,8 @@ export default function OrgBulkUploadPage() {
                         <ul className="list-disc pl-4 space-y-1.5">
                             <li><strong>Numbering:</strong> 1. What is...</li>
                             <li><strong>Options:</strong> A. Option...</li>
-                            <li><strong>Answers:</strong> Ans: A</li>
+                            <li><strong>Answers:</strong> Ans: A or mark the correct option with *</li>
+                            <li><strong>Formatting:</strong> DOCX bold, italics, underline, superscript, and subscript are preserved.</li>
                         </ul>
                         <div className="bg-purple-50 p-3 rounded border border-purple-100 mt-2">
                             <p className="font-semibold text-purple-900 mb-1 flex items-center gap-1">

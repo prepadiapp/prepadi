@@ -12,7 +12,6 @@ import { Badge } from '@/components/ui/badge';
 import { Toaster, toast } from 'sonner';
 import { EditPaperDialog } from '@/components/admin/EditPaperDialog';
 import { BookCopy, Building2, Filter, Loader2, Search, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 
 interface OrganizationOption {
   id: string;
@@ -23,6 +22,7 @@ interface SimpleOption {
   id: string;
   name: string;
   shortName?: string;
+  isYearBased?: boolean;
 }
 
 interface PaperRecord {
@@ -47,20 +47,11 @@ interface PaperRecord {
 }
 
 export default function PapersPage() {
-  const router = useRouter();
   const [papers, setPapers] = useState<PaperRecord[]>([]);
   const [organizations, setOrganizations] = useState<OrganizationOption[]>([]);
   const [exams, setExams] = useState<SimpleOption[]>([]);
   const [subjects, setSubjects] = useState<SimpleOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creatingPaper, setCreatingPaper] = useState(false);
-  const [availableYears, setAvailableYears] = useState<number[]>([]);
-  const [yearsLoading, setYearsLoading] = useState(false);
-  const [creator, setCreator] = useState({
-    examId: '',
-    subjectId: '',
-    year: '',
-  });
   const [filters, setFilters] = useState({
     q: '',
     ownerType: 'all',
@@ -104,41 +95,6 @@ export default function PapersPage() {
     void fetchData();
   }, [query]);
 
-  useEffect(() => {
-    const fetchAvailableYears = async () => {
-      if (!creator.examId || !creator.subjectId) {
-        setAvailableYears([]);
-        setCreator((current) => ({ ...current, year: '' }));
-        return;
-      }
-
-      setYearsLoading(true);
-      try {
-        const response = await fetch(
-          `/api/admin/papers/available-years?examId=${encodeURIComponent(creator.examId)}&subjectId=${encodeURIComponent(creator.subjectId)}`
-        );
-
-        if (!response.ok) throw new Error('Failed to fetch available years');
-
-        const data = await response.json();
-        const years = Array.isArray(data.years) ? data.years : [];
-        setAvailableYears(years);
-        setCreator((current) => ({
-          ...current,
-          year: years.length > 0 ? String(years[0]) : '',
-        }));
-      } catch (error) {
-        setAvailableYears([]);
-        setCreator((current) => ({ ...current, year: '' }));
-        toast.error('Could not load available years for this exam and subject');
-      } finally {
-        setYearsLoading(false);
-      }
-    };
-
-    void fetchAvailableYears();
-  }, [creator.examId, creator.subjectId]);
-
   const handleStatusChange = async (paper: PaperRecord, status: ContentStatus) => {
     try {
       const response = await fetch(`/api/admin/papers/${paper.id}`, {
@@ -172,38 +128,6 @@ export default function PapersPage() {
     }
   };
 
-  const handleFindOrCreatePaper = async () => {
-    if (!creator.examId || !creator.subjectId || !creator.year) {
-      toast.error('Select exam, subject, and year first');
-      return;
-    }
-
-    setCreatingPaper(true);
-    try {
-      const response = await fetch('/api/admin/papers/find-or-create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          examId: creator.examId,
-          subjectId: creator.subjectId,
-          year: Number(creator.year),
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({ error: 'Failed to load paper' }));
-        throw new Error(data.error || 'Failed to load paper');
-      }
-
-      const paper = await response.json();
-      router.push(`/admin/papers/${paper.id}`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to load paper');
-    } finally {
-      setCreatingPaper(false);
-    }
-  };
-
   return (
     <div className="space-y-6 pb-20">
       <Toaster richColors position="top-center" />
@@ -221,69 +145,21 @@ export default function PapersPage() {
         </div>
       </div>
 
-      <Card className="border-[color:var(--primary-border)]">
-        <CardHeader>
-          <CardTitle>Load or create a paper from source data</CardTitle>
-          <CardDescription>
-            Pull a yearly paper using the existing exam/subject/year fetch flow. New papers stay in draft until explicitly published.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-4">
+      <Card className="overflow-hidden border-[color:var(--primary-border)] bg-white">
+        <CardContent className="grid gap-5 p-5 md:grid-cols-[1fr_auto] md:items-center">
           <div className="space-y-2">
-            <Label>Exam brand</Label>
-            <Select value={creator.examId} onValueChange={(value) => setCreator((current) => ({ ...current, examId: value }))}>
-              <SelectTrigger><SelectValue placeholder="Select exam" /></SelectTrigger>
-              <SelectContent>
-                {exams.map((exam) => (
-                  <SelectItem key={exam.id} value={exam.id}>{exam.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
+              <BookCopy className="h-3.5 w-3.5" />
+              Curated content only
+            </div>
+            <h2 className="text-xl font-semibold tracking-tight text-slate-950">External question loading is paused</h2>
+            <p className="max-w-3xl text-sm leading-6 text-slate-600">
+              Admin papers now come from uploaded documents, pasted content, image parsing, and manual editing. Existing API-source loaders are disabled so students and organizations only use reviewed platform content.
+            </p>
           </div>
-          <div className="space-y-2">
-            <Label>Subject</Label>
-            <Select value={creator.subjectId} onValueChange={(value) => setCreator((current) => ({ ...current, subjectId: value }))}>
-              <SelectTrigger><SelectValue placeholder="Select subject" /></SelectTrigger>
-              <SelectContent>
-                {subjects.map((subject) => (
-                  <SelectItem key={subject.id} value={subject.id}>{subject.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Year</Label>
-            <Select
-              value={creator.year}
-              onValueChange={(value) => setCreator((current) => ({ ...current, year: value }))}
-              disabled={!creator.examId || !creator.subjectId || yearsLoading || availableYears.length === 0}
-            >
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                    !creator.examId || !creator.subjectId
-                      ? 'Select exam and subject first'
-                      : yearsLoading
-                        ? 'Loading years...'
-                        : 'No available years'
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {availableYears.map((year) => (
-                  <SelectItem key={year} value={String(year)}>
-                    {year}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-end">
-            <Button onClick={handleFindOrCreatePaper} disabled={creatingPaper} className="w-full rounded-full">
-              {creatingPaper ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Load Paper
-            </Button>
-          </div>
+          <Button asChild className="rounded-full bg-blue-600 px-5 font-semibold hover:bg-blue-700">
+            <Link href="/admin/bulk-upload">Create from bulk upload</Link>
+          </Button>
         </CardContent>
       </Card>
 

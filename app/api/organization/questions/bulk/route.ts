@@ -2,80 +2,11 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthSession } from '@/lib/auth';
 import { ContentStatus, ExaminationCategory, UserRole } from '@prisma/client';
-import mammoth from 'mammoth';
 import { parseBulkTextWithAI } from '@/lib/ai';
 import { ensureOrganizationExamination } from '@/lib/org-examinations';
 import { getOrganizationContext } from '@/lib/organization';
-
-// --- 1. Regex Parsing Logic (Standard) ---
-function parseStandardText(text: string) {
-  const questions: any[] = [];
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  
-  let currentSection: string | null = null;
-  let currentQuestion: any = null;
-
-  for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      // 1. Detect Section Headers
-      const sectionMatch = line.match(/^(?:SECTION|INSTRUCTION|PASSAGE|PART)\s*[:\-]?\s*(.*)/i);
-      
-      if (sectionMatch) {
-          if (!line.match(/^\d+[\.\)]/)) {
-             currentSection = line; 
-             continue;
-          }
-      }
-
-      // 2. Detect New Question
-      const qMatch = line.match(/^(\d+)[\.\)\-]\s*(.+)/);
-      if (qMatch) {
-          if (currentQuestion) {
-              questions.push(currentQuestion);
-          }
-          currentQuestion = {
-              text: qMatch[2],
-              options: [],
-              section: currentSection
-          };
-          continue;
-      }
-
-      // 3. Detect Options
-      const optMatch = line.match(/^(\(?[A-Ea-e]\)?|\(?[A-Ea-e]\.)\s+(.+)/);
-      if (currentQuestion && optMatch) {
-          const keyRaw = optMatch[1].replace(/[\(\)\.]/g, '').toUpperCase();
-          currentQuestion.options.push({
-              key: keyRaw,
-              text: optMatch[2],
-              isCorrect: false 
-          });
-          continue;
-      }
-
-      // 4. Detect Answer
-      const ansMatch = line.match(/^(?:Ans|Answer|Correct):\s*([A-E])/i);
-      if (currentQuestion && ansMatch) {
-          const correctKey = ansMatch[1].toUpperCase();
-          currentQuestion.options.forEach((opt: any) => {
-              if (opt.key === correctKey) opt.isCorrect = true;
-          });
-          continue;
-      }
-
-      // 5. Append text
-      if (currentQuestion && currentQuestion.options.length === 0) {
-          currentQuestion.text += " " + line;
-      }
-  }
-
-  if (currentQuestion) {
-      questions.push(currentQuestion);
-  }
-
-  return questions;
-}
+import { extractDocumentContent } from '@/lib/document-extraction';
+import { parseBulkText } from '@/lib/parser';
 
 export async function POST(req: Request) {
   try {
@@ -104,12 +35,11 @@ export async function POST(req: Request) {
     if (!file || !paperTitle) return new NextResponse("Missing file or title", { status: 400 });
     if (!subjectId && !newSubjectName) return new NextResponse("Missing subject", { status: 400 });
 
-    // 2. Extract Text
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const { value: docText } = await mammoth.extractRawText({ buffer });
+    // 2. Extract Content
+    const extractedContent = await extractDocumentContent(file);
+    const docContent = extractedContent.html || extractedContent.text;
 
-    if (!docText || docText.trim().length === 0) {
+    if (!docContent || docContent.trim().length === 0) {
         return new NextResponse("Document appears empty", { status: 400 });
     }
 
@@ -117,14 +47,44 @@ export async function POST(req: Request) {
     let parsedQuestions: any[] = [];
     
     if (useAI) {
-        const aiResult = await parseBulkTextWithAI(docText);
+        const aiResult = await parseBulkTextWithAI(docContent);
         parsedQuestions = aiResult.questions || [];
     } else {
-        parsedQuestions = parseStandardText(docText);
+        parsedQuestions = parseBulkText(docContent);
     }
 
     if (!parsedQuestions || parsedQuestions.length === 0) {
         return new NextResponse("No questions extracted.", { status: 400 });
+    }
+
+    const invalidObjectiveQuestion = parsedQuestions.find((question: any) => {
+        const isObjective = question.type !== 'THEORY';
+        if (!isObjective) return false;
+
+        const options = Array.isArray(question.options) ? question.options : [];
+        const validOptions = options.filter((option: any) => String(option?.text || '').trim().length > 0);
+        const correctCount = validOptions.filter((option: any) => Boolean(option?.isCorrect)).length;
+
+        return validOptions.length < 2 || correctCount !== 1;
+    });
+
+    if (invalidObjectiveQuestion) {
+        return new NextResponse(
+            'AI could not confidently identify exactly one correct answer for every objective question. Please review the source document and try again.',
+            { status: 422 }
+        );
+    }
+
+    const missingAiExplanation = useAI && parsedQuestions.find((question: any) => {
+        if (question.type === 'THEORY') return false;
+        return !String(question.explanation || '').trim();
+    });
+
+    if (missingAiExplanation) {
+        return new NextResponse(
+            'AI did not provide explanations for every objective question. Please retry or use the admin review flow for manual correction.',
+            { status: 422 }
+        );
     }
 
     // 4. Save to Database
@@ -220,6 +180,8 @@ export async function POST(req: Request) {
             await tx.question.create({
                 data: {
                     text: q.text,
+                    explanation: q.explanation || null,
+                    markingGuide: q.markingGuide || null,
                     year: year,
                     examId: defaultExam?.id!,
                     subjectId: finalSubjectId,

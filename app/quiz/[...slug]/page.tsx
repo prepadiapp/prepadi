@@ -8,7 +8,7 @@ import { SanitizedQuestion, QuizMode } from '@/stores/quizStore';
 import { verifyUserAccess } from '@/lib/access-control';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { resolveStudentPracticePaperBySlug } from '@/lib/student-practice';
+import { resolveStudentPracticePaperByPaperId, resolveStudentPracticePaperBySlug } from '@/lib/student-practice';
 
 interface QuizPageProps {
   params: Promise<{ slug: string[] }>;
@@ -91,6 +91,45 @@ async function getQuizData(slug: string[] | undefined, searchParams: { tags?: st
             },
             error: null
         };
+    }
+
+    if (slug[0] === 'paper') {
+      const paperId = slug[1];
+      const paper = await resolveStudentPracticePaperByPaperId(userId, paperId);
+
+      if (!paper || paper.questions.length === 0) {
+        throw new Error('No published seeded paper found for this selection.');
+      }
+
+      const sanitizedQuestions: SanitizedQuestion[] = paper.questions.map((q: any) => ({
+        id: q.id,
+        text: q.text,
+        year: q.year || new Date().getFullYear(),
+        type: q.type,
+        imageUrl: q.imageUrl,
+        sectionId: q.sectionId,
+        section: q.section ? {
+          instruction: q.section.instruction,
+          passage: q.section.passage,
+        } : null,
+        options: q.options.map((opt: any) => ({
+          id: opt.id,
+          text: opt.text,
+        })),
+      }));
+
+      return {
+        data: {
+          questions: sanitizedQuestions,
+          quizDetails: {
+            examName: paper.exam.name,
+            subjectName: paper.subject?.name || 'General',
+            year: paper.year || new Date().getFullYear(),
+          },
+          duration: paper.duration || paper.exam.duration || 60
+        },
+        error: null,
+      };
     }
 
     // --- MODE 2: PRACTICE / STANDARD EXAM ---

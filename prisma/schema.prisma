@@ -235,12 +235,13 @@ model Exam {
   duration    Int      @default(45) // Duration in minutes
   apiAliases  Json?    
   pricingCategory ExamPricingCategory @default(BASE)
-  monthlyFlatFee Int @default(0)
-  yearlyFlatFee Int @default(0)
-  monthlyPerStudentFee Int @default(0)
-  yearlyPerStudentFee Int @default(0)
-  
-  organizationId String?       
+    monthlyFlatFee Int @default(0)
+    yearlyFlatFee Int @default(0)
+    monthlyPerStudentFee Int @default(0)
+    yearlyPerStudentFee Int @default(0)
+    isYearBased Boolean @default(true)
+    
+    organizationId String?       
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   
   questions   Question[]

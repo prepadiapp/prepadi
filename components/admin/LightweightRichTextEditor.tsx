@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import DOMPurify from 'isomorphic-dompurify';
-import { Bold, Italic, Underline, List, ListOrdered, Sigma } from 'lucide-react';
+import { Bold, Italic, List, ListOrdered, Sigma, Underline } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { escapeHtml, sanitizeRichHtml } from '@/lib/rich-text';
 
 interface LightweightRichTextEditorProps {
   value: string;
@@ -14,34 +15,19 @@ interface LightweightRichTextEditorProps {
   rows?: number;
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 function normalizeIncomingValue(value: string) {
   if (!value) return '';
 
   const hasMarkup = /<\/?[a-z][\s\S]*>/i.test(value);
   if (hasMarkup) {
-    return DOMPurify.sanitize(value, {
-      ALLOWED_TAGS: ['b', 'strong', 'i', 'em', 'u', 'br', 'ul', 'ol', 'li', 'p', 'div'],
-      ALLOWED_ATTR: [],
-    });
+    return sanitizeRichHtml(value);
   }
 
   return escapeHtml(value).replace(/\n/g, '<br>');
 }
 
 function sanitizeOutgoingValue(value: string) {
-  return DOMPurify.sanitize(value, {
-    ALLOWED_TAGS: ['b', 'strong', 'i', 'em', 'u', 'br', 'ul', 'ol', 'li', 'p', 'div'],
-    ALLOWED_ATTR: [],
-  }).trim();
+  return sanitizeRichHtml(value);
 }
 
 function isEditorEmpty(html: string) {
@@ -109,6 +95,12 @@ export function LightweightRichTextEditor({
         </Button>
         <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => runCommand('underline')}>
           <Underline className="h-3.5 w-3.5" />
+        </Button>
+        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px]" onClick={() => runCommand('superscript')}>
+          x²
+        </Button>
+        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px]" onClick={() => runCommand('subscript')}>
+          x₂
         </Button>
         <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => runCommand('insertUnorderedList')}>
           <List className="h-3.5 w-3.5" />

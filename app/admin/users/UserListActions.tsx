@@ -85,13 +85,16 @@ export function UserListActions({ user }: { user: any }) {
               method: 'DELETE'
           });
 
-          if (!res.ok) throw new Error("Delete failed");
+          if (!res.ok) {
+              const message = await res.text().catch(() => "Delete failed");
+              throw new Error(message || "Delete failed");
+          }
           
           toast.success("User deleted permanently");
           setIsDeleteOpen(false);
           router.refresh();
       } catch (e) {
-          toast.error("Failed to delete user");
+          toast.error(e instanceof Error ? e.message : "Failed to delete user");
       } finally {
           setLoading(false);
       }

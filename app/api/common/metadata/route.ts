@@ -14,7 +14,7 @@ export async function GET() {
     const orgContext = session.user.role === UserRole.ORGANIZATION ? await getOrganizationContext(session) : null;
     const orgId = orgContext?.organizationId ?? (session.user as any).organizationId;
 
-    const [exams, subjects, globalPaperCombos, globalQuestionCombos] = await Promise.all([
+    const [exams, subjects, globalPaperCombos] = await Promise.all([
       // Exams are usually global standards (WAEC, etc), so fetch all
       prisma.exam.findMany({ orderBy: { name: 'asc' } }),
       
@@ -33,19 +33,7 @@ export async function GET() {
           organizationId: null,
           isPublic: true,
           year: { not: null },
-        },
-        select: {
-          examId: true,
-          subjectId: true,
-          year: true,
-        },
-        distinct: ['examId', 'subjectId', 'year'],
-      }),
-      prisma.question.findMany({
-        where: {
-          organizationId: null,
-          year: { not: null },
-          subjectId: { not: null },
+          questions: { some: {} },
         },
         select: {
           examId: true,
@@ -58,7 +46,9 @@ export async function GET() {
 
     const comboMap = new Map<string, { examId: string; subjectId: string; year: number }>();
 
-    [...globalPaperCombos, ...globalQuestionCombos].forEach((combo) => {
+    // Clone options must come from existing platform papers only. We no longer
+    // expose orphan question sets or external API-backed combinations here.
+    globalPaperCombos.forEach((combo) => {
       if (!combo.subjectId || combo.year == null) return;
       const key = `${combo.examId}:${combo.subjectId}:${combo.year}`;
       comboMap.set(key, {
