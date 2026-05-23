@@ -9,6 +9,7 @@ import {
   Users,
   BookOpen,
   FileText,
+  ScrollText,
   BarChart,
   Upload,
   CreditCard,
@@ -31,14 +32,19 @@ const sidebarLinks = [
     icon: Users,
   },
   {
-    title: 'Curriculum', // Renamed from Subjects & Exams
-    href: '/admin/subjects',
+    title: 'Curriculum',
+    href: '/admin/exams',
     icon: BookOpen,
   },
   {
-    title: 'Papers & Questions',
+    title: 'Papers',
     href: '/admin/papers',
     icon: FileText,
+  },
+  {
+    title: 'Question Bank',
+    href: '/admin/questions',
+    icon: ScrollText,
   },
   {
     title: 'Plans',

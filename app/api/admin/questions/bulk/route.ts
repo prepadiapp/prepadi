@@ -12,6 +12,15 @@ function toDuration(value: unknown) {
   return Number.isFinite(duration) && duration > 0 ? duration : null;
 }
 
+function normalizeQuestionText(value: string) {
+  return value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 async function findSiblingPapers(args: {
   examId: string;
   subjectId: string;
@@ -73,6 +82,112 @@ async function copyQuestionsToRevision(sourcePaperId: string, targetPaperId: str
   }
 
   return sourceQuestions.length;
+}
+
+async function upsertRevisionUploadQuestions(args: {
+  paperId: string;
+  questions: any[];
+  resolvedYear: number | null;
+}) {
+  const existingQuestions = await prisma.question.findMany({
+    where: { paperId: args.paperId },
+    include: { options: true, tags: true },
+    orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+  });
+
+  const existingByText = new Map<string, typeof existingQuestions[number]>();
+  for (const question of existingQuestions) {
+    const key = normalizeQuestionText(question.text || '');
+    if (key && !existingByText.has(key)) {
+      existingByText.set(key, question);
+    }
+  }
+
+  const uniqueSectionNames = Array.from(
+    new Set(args.questions.map((q) => q.sectionName).filter((name): name is string => !!name))
+  );
+  const sectionMap = new Map<string, string>();
+
+  for (const name of uniqueSectionNames) {
+    let section = await prisma.section.findFirst({ where: { instruction: name } });
+    if (!section) {
+      section = await prisma.section.create({ data: { instruction: name } });
+    }
+    sectionMap.set(name, section.id);
+  }
+
+  const processTags = async (tagNames: string[]) => {
+    const tagIds = [];
+    for (const name of tagNames) {
+      let tag = await prisma.tag.findUnique({ where: { name } });
+      if (!tag) tag = await prisma.tag.create({ data: { name } });
+      tagIds.push({ id: tag.id });
+    }
+    return tagIds;
+  };
+
+  const newQuestions: any[] = [];
+  let updatedCount = 0;
+
+  for (const question of args.questions) {
+    const key = normalizeQuestionText(question.text || '');
+    const existing = key ? existingByText.get(key) : undefined;
+
+    if (!existing) {
+      newQuestions.push(question);
+      continue;
+    }
+
+    const sectionId = question.sectionName ? sectionMap.get(question.sectionName) : null;
+    const tagConnects = question.tags ? await processTags(question.tags) : [];
+
+    await prisma.question.update({
+      where: { id: existing.id },
+      data: {
+        text: question.text,
+        explanation: question.explanation,
+        markingGuide: question.markingGuide,
+        year: args.resolvedYear,
+        type: question.type,
+        imageUrl: question.imageUrl,
+        sectionId: sectionId ?? null,
+        tags: {
+          set: tagConnects,
+        },
+        options: {
+          deleteMany: {},
+          createMany: {
+            data: (question.options || []).map((option: any) => ({
+              text: option.text,
+              isCorrect: option.isCorrect,
+            })),
+          },
+        },
+      },
+    });
+
+    updatedCount += 1;
+  }
+
+  const maxOrder = await prisma.question.aggregate({
+    where: { paperId: args.paperId },
+    _max: { order: true },
+  });
+  const orderOffset = maxOrder._max.order ?? -1;
+
+  const created = await questionService.bulkCreate(
+    newQuestions.map((question, index) => ({
+      ...question,
+      year: args.resolvedYear,
+      paperId: args.paperId,
+      order: orderOffset + index + 1,
+    }))
+  );
+
+  return {
+    createdCount: created.length,
+    updatedCount,
+  };
 }
 
 async function ensurePlatformExamination(args: {
@@ -173,6 +288,8 @@ export async function POST(request: Request) {
 
     let paperId: string;
     let copiedQuestionCount = 0;
+    let updatedQuestionCount = 0;
+    let createdQuestionCount = 0;
 
     if (destinationMode === 'APPEND_TO_DRAFT' || destinationMode === 'REVISION_FROM_PUBLISHED') {
       if (!targetPaperId) {
@@ -283,26 +400,38 @@ export async function POST(request: Request) {
       paperId = paper.id;
     }
 
-    const maxOrder = await prisma.question.aggregate({
-      where: { paperId },
-      _max: { order: true },
-    });
-    const orderOffset = maxOrder._max.order ?? -1;
-
-    const created = await questionService.bulkCreate(
-      questions.map((question, index) => ({
-        ...question,
-        year: resolvedYear,
+    if (destinationMode === 'REVISION_FROM_PUBLISHED') {
+      const revisionResult = await upsertRevisionUploadQuestions({
         paperId,
-        order: orderOffset + index + 1,
-      }))
-    );
+        questions,
+        resolvedYear,
+      });
+      createdQuestionCount = revisionResult.createdCount;
+      updatedQuestionCount = revisionResult.updatedCount;
+    } else {
+      const maxOrder = await prisma.question.aggregate({
+        where: { paperId },
+        _max: { order: true },
+      });
+      const orderOffset = maxOrder._max.order ?? -1;
+
+      const created = await questionService.bulkCreate(
+        questions.map((question, index) => ({
+          ...question,
+          year: resolvedYear,
+          paperId,
+          order: orderOffset + index + 1,
+        }))
+      );
+      createdQuestionCount = created.length;
+    }
 
     const paper = await prisma.examPaper.findUnique({ where: { id: paperId } });
 
     return NextResponse.json({
-      count: created.length,
+      count: createdQuestionCount,
       copiedQuestionCount,
+      updatedQuestionCount,
       paperId,
       paperTitle: paper?.title || resolvedPaperTitle,
       destinationMode,

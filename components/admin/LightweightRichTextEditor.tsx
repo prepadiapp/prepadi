@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bold, Italic, List, ListOrdered, Sigma, Underline } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { normalizeRichTextInput } from '@/lib/rich-text';
 import { cn } from '@/lib/utils';
 import { escapeHtml, sanitizeRichHtml } from '@/lib/rich-text';
 
@@ -77,8 +78,29 @@ export function LightweightRichTextEditor({
     emitChange();
   };
 
+  const insertHtml = (html: string) => {
+    editorRef.current?.focus();
+    document.execCommand('insertHTML', false, html);
+    emitChange();
+  };
+
   const insertSymbol = (symbol: string) => {
     runCommand('insertText', symbol);
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+
+    const html = event.clipboardData.getData('text/html');
+    if (html) {
+      insertHtml(sanitizeRichHtml(html));
+      return;
+    }
+
+    const text = event.clipboardData.getData('text/plain');
+    if (text) {
+      insertHtml(normalizeRichTextInput(text));
+    }
   };
 
   const currentHtml = editorRef.current?.innerHTML ?? normalizedValue;
@@ -143,6 +165,7 @@ export function LightweightRichTextEditor({
             setIsFocused(false);
             emitChange();
           }}
+          onPaste={handlePaste}
           onInput={emitChange}
           className={cn(
             'rounded-md border border-slate-200 bg-white px-3 py-3 text-sm leading-relaxed shadow-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15',

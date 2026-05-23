@@ -5,11 +5,12 @@ import { useState, useEffect, Suspense } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ChevronRight, Clock, Zap, Download, Loader2, FileText, CalendarDays } from 'lucide-react';
+import { ChevronRight, Clock, Zap, Download, Loader2, FileText, CalendarDays, Sparkles, Tags } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { saveExamForOffline } from '@/lib/offline-storage';
 import { toast } from 'sonner';
+import { MultiSelect } from '@/components/admin/MultiSelect';
 
 interface ExamSelectorProps {
   exams: {
@@ -36,6 +37,9 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [years, setYears] = useState<number[]>([]);
   const [paperChoices, setPaperChoices] = useState<Array<{ id: string; title: string; questionCount: number; duration?: number | null }>>([]);
+  const [topicOptions, setTopicOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
+  const [questionLimit, setQuestionLimit] = useState('20');
 
   const [isLoadingSubjects, setIsLoadingSubjects] = useState(true);
   const [isLoadingYears, setIsLoadingYears] = useState(false);
@@ -49,6 +53,8 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
       setSelectedYear('');
       setPaperChoices([]);
       setSelectedPaperId('');
+      setTopicOptions([]);
+      setSelectedTopics([]);
       return;
     }
 
@@ -59,6 +65,8 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
     setSelectedYear('');
     setPaperChoices([]);
     setSelectedPaperId('');
+    setTopicOptions([]);
+    setSelectedTopics([]);
 
     fetch(`/api/practice/availability?examId=${selectedExam.id}`)
       .then((res) => res.json())
@@ -74,12 +82,18 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
       setSelectedYear('');
       setPaperChoices([]);
       setSelectedPaperId('');
+      setTopicOptions([]);
+      setSelectedTopics([]);
 
       fetch(`/api/practice/availability?examId=${selectedExam.id}&subjectId=${selectedSubject}`)
         .then((res) => res.json())
         .then((data) => {
           setYears(data.years || []);
           setPaperChoices(data.papers || []);
+          setTopicOptions((data.topics || []).map((topic: { value: string; label: string }) => ({
+            value: topic.value,
+            label: topic.label,
+          })));
         })
         .catch((err) => console.error(err))
         .finally(() => setIsLoadingYears(false));
@@ -88,17 +102,55 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
       setSelectedYear('');
       setPaperChoices([]);
       setSelectedPaperId('');
+      setTopicOptions([]);
+      setSelectedTopics([]);
     }
   }, [selectedSubject, selectedExam]);
+
+  useEffect(() => {
+    if (!selectedExam || !selectedSubject || selectedExam.isYearBased === false) {
+      return;
+    }
+
+    const params = new URLSearchParams({
+      examId: selectedExam.id,
+      subjectId: selectedSubject,
+    });
+
+    if (selectedYear) {
+      params.set('year', selectedYear);
+    }
+
+    fetch(`/api/practice/availability?${params.toString()}`)
+      .then((res) => res.json())
+      .then((data) => {
+        setTopicOptions((data.topics || []).map((topic: { value: string; label: string }) => ({
+          value: topic.value,
+          label: topic.label,
+        })));
+        setSelectedTopics((current) => current.filter((topic) => (data.topics || []).some((item: { value: string }) => item.value === topic)));
+      })
+      .catch((err) => console.error(err));
+  }, [selectedExam, selectedSubject, selectedYear]);
   
   const handleStartExam = () => {
     if (!selectedExam || !selectedSubject) return;
 
+    const mode = isPracticeMode ? 'practice' : 'exam';
+    const params = new URLSearchParams();
+    params.set('mode', mode);
+
+    if (isPracticeMode && selectedTopics.length > 0) {
+      const examSlug = selectedExam.shortName.toLowerCase();
+      const subjectSlug = subjects.find(s => s.id === selectedSubject)?.name.toLowerCase().replace(/\s+/g, '-') || '';
+      params.set('tags', selectedTopics.join(','));
+      params.set('limit', questionLimit);
+      router.push(`/quiz/${examSlug}/${subjectSlug}/${selectedYear || 'random'}?${params.toString()}`);
+      return;
+    }
+
     if (selectedExam.isYearBased === false) {
       if (!selectedPaperId) return;
-      const mode = isPracticeMode ? 'practice' : 'exam';
-      const params = new URLSearchParams();
-      params.set('mode', mode);
       router.push(`/quiz/paper/${selectedPaperId}?${params.toString()}`);
       return;
     }
@@ -108,11 +160,6 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
     const examSlug = selectedExam.shortName.toLowerCase();
     const subjectSlug = subjects.find(s => s.id === selectedSubject)?.name.toLowerCase().replace(/\s+/g, '-') || '';
     
-    const mode = isPracticeMode ? 'practice' : 'exam';
-    
-    const params = new URLSearchParams();
-    params.set('mode', mode);
-
     router.push(`/quiz/${examSlug}/${subjectSlug}/${selectedYear}?${params.toString()}`);
   };
 
@@ -120,6 +167,10 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
     if (!selectedExam || !selectedSubject) return;
     if (selectedExam.isYearBased !== false && !selectedYear) return;
     if (selectedExam.isYearBased === false && !selectedPaperId) return;
+    if (selectedTopics.length > 0) {
+      toast.info('Offline save is available for full papers right now, not topic-based random sets.');
+      return;
+    }
 
     setIsDownloading(true);
     try {
@@ -154,8 +205,12 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
   };
 
   const isYearBased = selectedExam?.isYearBased !== false;
-  const canStart = !!selectedExam && !!selectedSubject && (isYearBased ? !!selectedYear : !!selectedPaperId);
-  const canDownload = canStart; 
+  const isTopicPractice = isPracticeMode && selectedTopics.length > 0;
+  const canStart =
+    !!selectedExam &&
+    !!selectedSubject &&
+    (isTopicPractice || (isYearBased ? !!selectedYear : !!selectedPaperId));
+  const canDownload = canStart && !isTopicPractice; 
 
   return (
     <Card className="w-full overflow-hidden border-blue-100 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
@@ -261,7 +316,52 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
             </div>
 
         <div className="rounded-xl border border-[color:var(--primary-border)] bg-[color:var(--primary-soft)] px-4 py-3 text-xs text-slate-600">
-            Topic-based random practice is temporarily unavailable here while student practice is being aligned strictly to seeded published papers.
+          <div className="flex items-start gap-3">
+            <Sparkles className="mt-0.5 h-4 w-4 text-blue-700" />
+            <div className="space-y-3 flex-1">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Focused topic practice</p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  Pick one or more topics to build a random practice set from seeded published questions already available to you.
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-[1.6fr_0.8fr]">
+                <div className="space-y-2">
+                  <label className="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <Tags className="h-3.5 w-3.5" /> Topics
+                  </label>
+                  <MultiSelect
+                    options={topicOptions}
+                    selected={selectedTopics}
+                    onChange={setSelectedTopics}
+                    placeholder={!selectedSubject ? 'Select a subject first' : topicOptions.length === 0 ? 'No tagged topics yet' : 'Choose topics'}
+                    className="min-h-11 bg-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Question count
+                  </label>
+                  <Select value={questionLimit} onValueChange={setQuestionLimit}>
+                    <SelectTrigger className="h-11 bg-white border-slate-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10 questions</SelectItem>
+                      <SelectItem value="20">20 questions</SelectItem>
+                      <SelectItem value="30">30 questions</SelectItem>
+                      <SelectItem value="40">40 questions</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {isTopicPractice && (
+                <p className="text-xs text-blue-700">
+                  Starting now will build a random seeded set from the selected topics{selectedYear ? ` within ${selectedYear}` : ' across your available years'}.
+                </p>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Action Buttons - Responsive Stack */}

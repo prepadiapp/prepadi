@@ -145,24 +145,6 @@ export default function PapersPage() {
         </div>
       </div>
 
-      <Card className="overflow-hidden border-[color:var(--primary-border)] bg-white">
-        <CardContent className="grid gap-5 p-5 md:grid-cols-[1fr_auto] md:items-center">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
-              <BookCopy className="h-3.5 w-3.5" />
-              Curated content only
-            </div>
-            <h2 className="text-xl font-semibold tracking-tight text-slate-950">External question loading is paused</h2>
-            <p className="max-w-3xl text-sm leading-6 text-slate-600">
-              Admin papers now come from uploaded documents, pasted content, image parsing, and manual editing. Existing API-source loaders are disabled so students and organizations only use reviewed platform content.
-            </p>
-          </div>
-          <Button asChild className="rounded-full bg-blue-600 px-5 font-semibold hover:bg-blue-700">
-            <Link href="/admin/bulk-upload">Create from bulk upload</Link>
-          </Button>
-        </CardContent>
-      </Card>
-
       <Card className="border-[color:var(--primary-border)]">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
