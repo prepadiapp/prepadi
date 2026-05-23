@@ -23,7 +23,7 @@ export async function POST(req: Request) {
         examName: paper.exam.name,
         subjectName: paper.subject?.name || 'General',
         year: paper.year || new Date().getFullYear(),
-        duration: paper.duration || paper.exam.duration || 60,
+        duration: paper.duration || paper.examination?.duration || paper.exam.duration || 60,
         questions: paper.questions.map((q: any) => ({
           id: q.id,
           text: q.text,
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       examName: paper.exam.name,
       subjectName: paper.subject?.name || 'General',
       year: parseInt(year),
-      duration: paper.duration || paper.exam.duration || 60,
+      duration: paper.duration || paper.examination?.duration || paper.exam.duration || 60,
       questions: paper.questions.map((q: any) => ({
         id: q.id,
         text: q.text,

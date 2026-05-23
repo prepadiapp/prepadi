@@ -189,7 +189,7 @@ export default function OrgBulkUploadPage() {
                 <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors cursor-pointer relative group">
                     <input 
                         type="file" 
-                        accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf" 
+                        accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" 
                         onChange={handleFileChange}
                         className="absolute inset-0 opacity-0 cursor-pointer z-10"
                     />
@@ -199,7 +199,7 @@ export default function OrgBulkUploadPage() {
                     <p className="text-sm font-medium text-slate-900">
                         {file ? <span className="text-blue-600">{file.name}</span> : "Drop your exam file here"}
                     </p>
-                    <p className="text-xs text-slate-500 mt-1">.docx and text-based .pdf files supported (Max 5MB)</p>
+                    <p className="text-xs text-slate-500 mt-1">.docx files supported (Max 5MB)</p>
                 </div>
             </div>
 

@@ -32,7 +32,13 @@ export async function GET(request: Request) {
     if (examId && examId !== 'all') where.examId = examId;
     if (year) where.year = parseInt(year);
     if (type && type !== 'all') where.type = type;
-    if (status && status !== 'all') where.moderationStatus = status;
+    if (status && status !== 'all') {
+      where.paper = {
+        is: {
+          status: status as any,
+        },
+      };
+    }
     if (flagged === 'true') where.isFlagged = true;
     if (flagged === 'false') where.isFlagged = false;
     if (q) {

@@ -52,6 +52,9 @@ interface Props {
 
 type AutosaveState = 'idle' | 'saving' | 'saved' | 'error';
 
+const normalizeOptionText = (value: string) =>
+  value.replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').trim();
+
 export function QuestionAccordionItem({
   question,
   index,
@@ -71,7 +74,11 @@ export function QuestionAccordionItem({
     text: question.text,
     explanation: question.explanation || '',
     imageUrl: question.imageUrl || '',
-    options: question.options || [],
+    options:
+      question.options?.map((option) => ({
+        ...option,
+        text: normalizeOptionText(option.text || ''),
+      })) || [],
     section: question.section?.instruction || '',
     tags: question.tags?.map((t) => t.name) || [],
     isFlagged: question.isFlagged || false,
@@ -88,7 +95,10 @@ export function QuestionAccordionItem({
           text: formData.text,
           explanation: formData.explanation,
           imageUrl: formData.imageUrl,
-          options: formData.options,
+          options: formData.options.map((option) => ({
+            ...option,
+            text: normalizeOptionText(option.text || ''),
+          })),
           section: formData.section,
           tags: isAdmin ? formData.tags : undefined,
           isFlagged: formData.isFlagged,
@@ -347,12 +357,11 @@ export function QuestionAccordionItem({
                             <Check className="pointer-events-none absolute h-2.5 w-2.5 text-white opacity-0 peer-checked:opacity-100 md:h-3 md:w-3" />
                           </div>
                           <div className="flex-1">
-                            <LightweightRichTextEditor
-                              value={opt.text}
-                              onChange={(value) => updateOption(i, 'text', value)}
-                              rows={2}
+                            <Input
+                              value={normalizeOptionText(opt.text || '')}
+                              onChange={(e) => updateOption(i, 'text', e.target.value)}
                               className={cn(
-                                'min-h-[76px] bg-transparent text-xs transition-colors md:text-sm',
+                                'h-11 bg-transparent text-xs transition-colors md:text-sm',
                                 opt.isCorrect ? 'border-green-500 bg-green-50/30 ring-1 ring-green-500/20' : 'border-slate-200 focus-visible:border-slate-400'
                               )}
                               placeholder={`Option ${String.fromCharCode(65 + i)}`}

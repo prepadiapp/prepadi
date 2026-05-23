@@ -27,6 +27,9 @@ type FormOption = {
   isCorrect: boolean;
 };
 
+const normalizeOptionText = (value: string) =>
+  value.replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').trim();
+
 type FilterData = {
   exams: Exam[];
   subjects: Subject[];
@@ -112,7 +115,7 @@ function QuestionEditorContent() {
         if (question.options && question.options.length > 0) {
           setOptions(question.options.map((opt: any) => ({
             id: opt.id,
-            text: opt.text,
+            text: normalizeOptionText(opt.text || ''),
             isCorrect: opt.isCorrect,
           })));
         } else if (question.type === 'THEORY') {
@@ -159,7 +162,12 @@ function QuestionEditorContent() {
             if (parsedQuestion.tags && Array.isArray(parsedQuestion.tags)) setTags(parsedQuestion.tags);
             
             if (parsedQuestion.options && Array.isArray(parsedQuestion.options) && parsedQuestion.options.length > 0) {
-                setOptions(parsedQuestion.options);
+                setOptions(
+                  parsedQuestion.options.map((opt: FormOption) => ({
+                    ...opt,
+                    text: normalizeOptionText(opt.text || ''),
+                  }))
+                );
             }
             toast.success("Question extracted by AI!");
         } catch (err) {
@@ -205,7 +213,12 @@ function QuestionEditorContent() {
     
     const apiPath = isEditMode ? `/api/admin/questions/${id}` : '/api/admin/questions';
     const method = isEditMode ? 'PATCH' : 'POST';
-    const optionsToSend = qType === QuestionType.OBJECTIVE ? options : [];
+    const optionsToSend = qType === QuestionType.OBJECTIVE
+      ? options.map((option) => ({
+          ...option,
+          text: normalizeOptionText(option.text),
+        }))
+      : [];
 
     try {
       const response = await fetch(apiPath, {
@@ -351,12 +364,11 @@ function QuestionEditorContent() {
                       <div key={index} className="flex items-center gap-2">
                         <RadioGroupItem value={String(index)} id={`opt-${index}`} />
                         <div className="flex-1">
-                          <LightweightRichTextEditor
+                          <Input
                             value={opt.text}
-                            onChange={(value) => handleOptionTextChange(index, value)}
+                            onChange={(e) => handleOptionTextChange(index, e.target.value)}
                             placeholder={`Option ${String.fromCharCode(65 + index)}`}
-                            rows={2}
-                            className="min-h-[76px]"
+                            className="h-11"
                           />
                         </div>
                         {options.length > 2 && <Button type="button" variant="ghost" size="icon" onClick={() => removeOption(index)}><Trash2 className="w-4 h-4 text-red-500" /></Button>}

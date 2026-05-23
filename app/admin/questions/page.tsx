@@ -81,6 +81,10 @@ function statusBadgeVariant(status: ContentStatus) {
   return 'secondary';
 }
 
+function resolveDisplayStatus(question: QuestionWithDetails) {
+  return question.paper?.status ?? question.moderationStatus;
+}
+
 export default function ManageQuestionsPage() {
   const [questions, setQuestions] = useState<QuestionWithDetails[]>([]);
   const [filterData, setFilterData] = useState<FilterData>({
@@ -344,13 +348,13 @@ export default function ManageQuestionsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="status">Moderation status</Label>
+              <Label htmlFor="status">Paper status</Label>
               <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger id="status" className="rounded-2xl">
-                  <SelectValue placeholder="All Statuses" />
+                  <SelectValue placeholder="All Paper Statuses" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="all">All Paper Statuses</SelectItem>
                   <SelectItem value={ContentStatus.DRAFT}>Draft</SelectItem>
                   <SelectItem value={ContentStatus.PUBLISHED}>Published</SelectItem>
                   <SelectItem value={ContentStatus.ARCHIVED}>Archived</SelectItem>
@@ -443,10 +447,12 @@ export default function ManageQuestionsPage() {
                           {q.paper ? (
                             <Link href={`/admin/papers/${q.paper.id}`} className="group block max-w-[220px]">
                               <p className="truncate text-sm font-medium text-blue-700 group-hover:underline">{q.paper.title}</p>
-                              <p className="text-xs text-slate-500">{q.paper.paperLabel || q.paper.status}</p>
+                              <p className="text-xs text-slate-500">
+                                {q.paper.paperLabel || q.paper.status.toLowerCase()}
+                              </p>
                             </Link>
                           ) : (
-                            <span className="text-sm text-slate-400">Not linked</span>
+                              <span className="text-sm text-slate-400">Not linked</span>
                           )}
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
@@ -460,7 +466,9 @@ export default function ManageQuestionsPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={statusBadgeVariant(q.moderationStatus)}>{q.moderationStatus.toLowerCase()}</Badge>
+                          <Badge variant={statusBadgeVariant(resolveDisplayStatus(q))}>
+                            {resolveDisplayStatus(q).toLowerCase()}
+                          </Badge>
                         </TableCell>
                         <TableCell className="text-right">
                           <Button asChild variant="ghost" size="icon">

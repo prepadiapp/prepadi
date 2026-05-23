@@ -40,14 +40,6 @@ interface PlanFormDialogProps {
   onSave: () => void;
 }
 
-const generateYearOptions = () => {
-  const currentYear = new Date().getFullYear();
-  return Array.from({ length: 20 }, (_, index) => {
-    const value = String(currentYear - index);
-    return { label: value, value };
-  });
-};
-
 const createSeatBand = (): SeatBandInput => ({
   id: crypto.randomUUID(),
   minSeats: 3,
@@ -79,20 +71,24 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
 
   const [allExams, setAllExams] = useState<Exam[]>([]);
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
-
-  const yearOptions = generateYearOptions();
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [examsRes, subjectsRes] = await Promise.all([
+        const [examsRes, subjectsRes, yearsRes] = await Promise.all([
           fetch('/api/admin/exams'),
           fetch('/api/admin/subjects'),
+          fetch('/api/admin/plans/available-years'),
         ]);
 
         if (examsRes.ok) setAllExams(await examsRes.json());
         if (subjectsRes.ok) setAllSubjects(await subjectsRes.json());
+        if (yearsRes.ok) {
+          const yearsPayload = await yearsRes.json();
+          setAvailableYears(Array.isArray(yearsPayload.years) ? yearsPayload.years : []);
+        }
       } catch (error) {
         console.error('Failed to load plan metadata', error);
       }
@@ -243,6 +239,12 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
 
   const examOptions = allExams.map((exam) => ({ label: exam.name, value: exam.id }));
   const subjectOptions = allSubjects.map((subject) => ({ label: subject.name, value: subject.id }));
+  const yearOptions = availableYears.map((year) => ({ label: String(year), value: String(year) }));
+  const allYearsEnabled = allowedYears.includes('ALL');
+
+  const toggleAllYears = () => {
+    setAllowedYears((current) => (current.includes('ALL') ? [] : ['ALL']));
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -356,7 +358,32 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
 
                   <div className="space-y-2">
                     <Label>Allowed years</Label>
-                    <MultiSelect options={yearOptions} selected={allowedYears} onChange={setAllowedYears} placeholder="Select years..." />
+                    <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                      <label className="flex items-start gap-3 rounded-xl bg-white px-4 py-3 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={allYearsEnabled}
+                          onChange={toggleAllYears}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          <span className="block font-medium text-slate-900">All existing and future years</span>
+                          <span className="mt-1 block text-xs text-slate-500">
+                            Give this plan access to every seeded year now and any new years added later.
+                          </span>
+                        </span>
+                      </label>
+                      <MultiSelect
+                        options={yearOptions}
+                        selected={allYearsEnabled ? [] : allowedYears}
+                        onChange={setAllowedYears}
+                        placeholder={yearOptions.length > 0 ? 'Select specific available years...' : 'No seeded years available yet'}
+                        className="bg-white"
+                      />
+                      <p className="text-xs text-slate-500">
+                        This list is pulled from the actual years already present in platform papers.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </>

@@ -46,6 +46,9 @@ TAGS: agriculture, environment`;
 const stripFormatting = (value: string) =>
   value.replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').trim();
 
+const normalizeOptionText = (value: string) =>
+  value.replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').trim();
+
 export default function BulkUploadPage() {
   const router = useRouter();
   
@@ -177,11 +180,7 @@ export default function BulkUploadPage() {
       }
 
       setRawText(result.html || result.text || '');
-      toast.success(
-        result.fileType === 'pdf'
-          ? 'PDF text extracted. Please review formatting before processing.'
-          : 'Document formatting extracted successfully!'
-      );
+        toast.success('Document formatting extracted successfully!');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to read file.');
     } finally {
@@ -363,7 +362,10 @@ export default function BulkUploadPage() {
         type: q.type,
         sectionName: q.section,
         order: parsedQuestions.findIndex((item) => item.id === q.id),
-        options: q.options,
+        options: q.options.map((option) => ({
+          ...option,
+          text: normalizeOptionText(option.text || ''),
+        })),
         tags: q.tags,
         markingGuide: q.type === 'THEORY' ? q.markingGuide || q.explanation || 'See Answer' : undefined
       }));
@@ -387,7 +389,13 @@ export default function BulkUploadPage() {
       }
 
       const data = await res.json();
-      toast.success(`Successfully uploaded ${data.count} questions to a draft paper.`);
+      if (destinationMode === 'REVISION_FROM_PUBLISHED') {
+        toast.success(
+          `Draft revision ready: ${data.copiedQuestionCount ?? 0} copied, ${data.updatedQuestionCount ?? 0} matched/updated, ${data.count ?? 0} new question${data.count === 1 ? '' : 's'} added.`
+        );
+      } else {
+        toast.success(`Successfully uploaded ${data.count} questions to a draft paper.`);
+      }
       router.push(`/admin/papers/${data.paperId}`); 
     } catch (err) {
       toast.error('Failed to upload questions.');
@@ -645,19 +653,19 @@ export default function BulkUploadPage() {
                     <div className="flex justify-center">
                         <Input
                           type="file"
-                          accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf"
+                          accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                           onChange={handleFileChange}
                           className="max-w-sm"
                           disabled={processing}
                         />
                     </div>
-                    <Alert>
-                      <FileText className="h-4 w-4" />
-                      <AlertTitle>Document support</AlertTitle>
-                      <AlertDescription>
-                        DOCX preserves common formatting. Text-based PDFs are supported, but PDF formatting may need review after extraction.
-                      </AlertDescription>
-                    </Alert>
+                      <Alert>
+                        <FileText className="h-4 w-4" />
+                        <AlertTitle>Document support</AlertTitle>
+                        <AlertDescription>
+                        DOCX preserves common formatting, including underline, lists, superscript, and subscript.
+                        </AlertDescription>
+                      </Alert>
                  </div>
 
                  <Button onClick={processText} disabled={processing} className="w-full">
@@ -753,15 +761,15 @@ export default function BulkUploadPage() {
                       <div key={optIndex} className={`flex items-start gap-2 rounded border p-2 ${opt.isCorrect ? 'border-green-500 bg-green-50' : ''}`}>
                         <span className="mt-3 w-6 text-sm font-bold">{String.fromCharCode(65 + optIndex)}.</span>
                         <div className="flex-1">
-                          <LightweightRichTextEditor
-                            value={opt.text}
-                            onChange={(value) => {
-                            const newOptions = [...q.options];
-                            newOptions[optIndex].text = value;
-                            updateQuestion(index, 'options', newOptions);
-                          }}
-                            rows={2}
-                            className="min-h-[76px] bg-white"
+                          <Input
+                            value={normalizeOptionText(opt.text || '')}
+                            onChange={(e) => {
+                              const newOptions = [...q.options];
+                              newOptions[optIndex].text = e.target.value;
+                              updateQuestion(index, 'options', newOptions);
+                            }}
+                            className="h-11 bg-white"
+                            placeholder={`Option ${String.fromCharCode(65 + optIndex)}`}
                           />
                         </div>
                         <input 
