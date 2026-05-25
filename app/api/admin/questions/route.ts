@@ -2,7 +2,6 @@ import { getAuthSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { UserRole, QuestionType } from '@prisma/client';
 import { NextResponse } from 'next/server';
-import { generateTags } from '@/lib/ai';
 
 const PAGE_SIZE = 20;
 
@@ -146,6 +145,7 @@ export async function POST(request: Request) {
     
     if (tagNames.length === 0) {
         try {
+            const { generateTags } = await import('@/lib/ai');
             const subject = await prisma.subject.findUnique({
                 where: { id: subjectId },
                 select: { name: true }
