@@ -174,7 +174,17 @@ export default function BulkUploadPage() {
         body: formData,
       });
 
-      const result = await response.json();
+      const responseText = await response.text();
+      let result: { html?: string; text?: string; error?: string } = {};
+      try {
+        result = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        if (!response.ok) {
+          throw new Error('The server could not process this document upload in production. Please try again after redeploying the latest fix.');
+        }
+        throw new Error('The server returned an unexpected response while reading this document.');
+      }
+
       if (!response.ok) {
         throw new Error(result.error || 'Failed to extract document');
       }

@@ -3,6 +3,8 @@ import { extractDocumentContent } from '@/lib/document-extraction';
 import { UserRole } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
+export const runtime = 'nodejs';
+
 export async function POST(request: Request) {
   const session = await getAuthSession();
   if (!session?.user || session.user.role !== UserRole.ADMIN) {
