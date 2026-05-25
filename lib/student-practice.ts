@@ -204,7 +204,7 @@ export async function getAccessiblePracticePapers(
       paper.organizationId || 'platform',
       paper.examId,
       paper.subjectId,
-      isYearBased ? paper.year : paper.title.toLowerCase(),
+      isYearBased ? paper.year : paper.revisionGroupId,
     ].join(':');
 
     if (!byIdentity.has(identity)) {
