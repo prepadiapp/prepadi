@@ -38,7 +38,7 @@ async function findSiblingPapers(args: {
         ? { year: args.year }
         : { year: null, title: { equals: args.title, mode: 'insensitive' } }),
     },
-    select: { id: true, title: true, status: true, year: true, _count: { select: { questions: true } } },
+    select: { id: true, title: true, status: true, year: true, revisionGroupId: true, _count: { select: { questions: true } } },
     orderBy: [{ updatedAt: 'desc' }],
   });
 }
@@ -340,6 +340,7 @@ export async function POST(request: Request) {
             subjectId: targetPaper.subjectId,
             authorId: session.user.id,
             examinationId,
+            revisionGroupId: targetPaper.revisionGroupId,
             isPublic: false,
             isVerified: false,
             status: ContentStatus.DRAFT,

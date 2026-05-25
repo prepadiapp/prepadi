@@ -21,7 +21,7 @@ async function archivePublishedSiblings(paperId: string) {
       status: ContentStatus.PUBLISHED,
       ...(isYearBased
         ? { year: paper.year }
-        : { year: null, title: { equals: paper.title, mode: 'insensitive' } }),
+        : { revisionGroupId: paper.revisionGroupId }),
     },
     data: {
       status: ContentStatus.ARCHIVED,
