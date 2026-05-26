@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { saveExamForOffline } from '@/lib/offline-storage';
 import { toast } from 'sonner';
 import { MultiSelect } from '@/components/admin/MultiSelect';
+import { Switch } from '@/components/ui/switch';
 
 interface ExamSelectorProps {
   exams: {
@@ -33,6 +34,7 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
   const [selectedSubject, setSelectedSubject] = useState<string>('');
   const [selectedYear, setSelectedYear] = useState<string>('');
   const [selectedPaperId, setSelectedPaperId] = useState<string>('');
+  const [useFocusedTopics, setUseFocusedTopics] = useState(false);
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [years, setYears] = useState<number[]>([]);
@@ -41,9 +43,11 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [questionLimit, setQuestionLimit] = useState('20');
 
-  const [isLoadingSubjects, setIsLoadingSubjects] = useState(true);
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
   const [isLoadingYears, setIsLoadingYears] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [subjectLoadError, setSubjectLoadError] = useState<string>('');
+  const [availabilityError, setAvailabilityError] = useState<string>('');
 
   useEffect(() => {
     if (!selectedExam) {
@@ -55,10 +59,15 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
       setSelectedPaperId('');
       setTopicOptions([]);
       setSelectedTopics([]);
+      setUseFocusedTopics(false);
+      setSubjectLoadError('');
+      setAvailabilityError('');
       return;
     }
 
     setIsLoadingSubjects(true);
+    setSubjectLoadError('');
+    setAvailabilityError('');
     setSubjects([]);
     setSelectedSubject('');
     setYears([]);
@@ -67,26 +76,48 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
     setSelectedPaperId('');
     setTopicOptions([]);
     setSelectedTopics([]);
+    setUseFocusedTopics(false);
 
     fetch(`/api/practice/availability?examId=${selectedExam.id}`)
-      .then((res) => res.json())
-      .then((data) => setSubjects(data.subjects || []))
-      .catch((err) => console.error(err))
+      .then(async (res) => {
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+        return res.json();
+      })
+      .then((data) => {
+        const nextSubjects = Array.isArray(data.subjects) ? data.subjects : [];
+        setSubjects(nextSubjects);
+        if (nextSubjects.length === 0) {
+          setSubjectLoadError('No accessible subjects were found for this exam yet.');
+        }
+      })
+      .catch((err) => {
+        console.error(err);
+        setSubjectLoadError('We could not load subjects for this exam right now.');
+      })
       .finally(() => setIsLoadingSubjects(false));
   }, [selectedExam]);
 
   useEffect(() => {
     if (selectedExam && selectedSubject) {
       setIsLoadingYears(true);
+      setAvailabilityError('');
       setYears([]);
       setSelectedYear('');
       setPaperChoices([]);
       setSelectedPaperId('');
       setTopicOptions([]);
       setSelectedTopics([]);
+      setUseFocusedTopics(false);
 
       fetch(`/api/practice/availability?examId=${selectedExam.id}&subjectId=${selectedSubject}`)
-        .then((res) => res.json())
+        .then(async (res) => {
+          if (!res.ok) {
+            throw new Error(await res.text());
+          }
+          return res.json();
+        })
         .then((data) => {
           setYears(data.years || []);
           setPaperChoices(data.papers || []);
@@ -94,8 +125,14 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
             value: topic.value,
             label: topic.label,
           })));
+          if ((selectedExam.isYearBased === false && (data.papers || []).length === 0) || (selectedExam.isYearBased !== false && (data.years || []).length === 0)) {
+            setAvailabilityError('No published practice options are available for this subject yet.');
+          }
         })
-        .catch((err) => console.error(err))
+        .catch((err) => {
+          console.error(err);
+          setAvailabilityError('We could not load this subject’s practice options right now.');
+        })
         .finally(() => setIsLoadingYears(false));
     } else {
       setYears([]);
@@ -104,6 +141,8 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
       setSelectedPaperId('');
       setTopicOptions([]);
       setSelectedTopics([]);
+      setUseFocusedTopics(false);
+      setAvailabilityError('');
     }
   }, [selectedSubject, selectedExam]);
 
@@ -122,7 +161,12 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
     }
 
     fetch(`/api/practice/availability?${params.toString()}`)
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+        return res.json();
+      })
       .then((data) => {
         setTopicOptions((data.topics || []).map((topic: { value: string; label: string }) => ({
           value: topic.value,
@@ -132,6 +176,13 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
       })
       .catch((err) => console.error(err));
   }, [selectedExam, selectedSubject, selectedYear]);
+
+  useEffect(() => {
+    if (!isPracticeMode && useFocusedTopics) {
+      setUseFocusedTopics(false);
+      setSelectedTopics([]);
+    }
+  }, [isPracticeMode, useFocusedTopics]);
   
   const handleStartExam = () => {
     if (!selectedExam || !selectedSubject) return;
@@ -205,12 +256,20 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
   };
 
   const isYearBased = selectedExam?.isYearBased !== false;
-  const isTopicPractice = isPracticeMode && selectedTopics.length > 0;
+  const isTopicPractice = isPracticeMode && useFocusedTopics && selectedTopics.length > 0;
   const canStart =
     !!selectedExam &&
     !!selectedSubject &&
     (isTopicPractice || (isYearBased ? !!selectedYear : !!selectedPaperId));
   const canDownload = canStart && !isTopicPractice; 
+  const subjectPlaceholder = !selectedExam
+    ? 'Select Exam first'
+    : isLoadingSubjects
+      ? 'Loading subjects...'
+      : subjects.length === 0
+        ? 'No subjects available'
+        : 'Select Subject';
+  const topicPracticeAvailable = !!selectedSubject && topicOptions.length > 0;
 
   return (
     <Card className="w-full overflow-hidden border-blue-100 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
@@ -245,14 +304,17 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     2. Choose Subject
                 </label>
-                <Select onValueChange={setSelectedSubject} value={selectedSubject}>
+                <Select onValueChange={setSelectedSubject} value={selectedSubject} disabled={!selectedExam || isLoadingSubjects || subjects.length === 0}>
                     <SelectTrigger className="h-11 bg-slate-50 border-slate-200">
-                        <SelectValue placeholder="Select Subject" />
+                        <SelectValue placeholder={subjectPlaceholder} />
                     </SelectTrigger>
                     <SelectContent>
                         {subjects.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                     </SelectContent>
                 </Select>
+                {subjectLoadError && (
+                  <p className="text-xs text-amber-700">{subjectLoadError}</p>
+                )}
             </div>
         </div>
 
@@ -291,6 +353,11 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
                     </Select>
                 </div>
               )}
+              {availabilityError && (
+                <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {availabilityError}
+                </div>
+              )}
                 
                 <div className="space-y-2">
                     <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -319,42 +386,77 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
           <div className="flex items-start gap-3">
             <Sparkles className="mt-0.5 h-4 w-4 text-blue-700" />
             <div className="space-y-3 flex-1">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Focused topic practice</p>
-                <p className="mt-1 text-xs leading-5 text-slate-600">
-                  Pick one or more topics to build a random practice set from seeded published questions already available to you.
-                </p>
-              </div>
-              <div className="grid gap-4 md:grid-cols-[1.6fr_0.8fr]">
-                <div className="space-y-2">
-                  <label className="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    <Tags className="h-3.5 w-3.5" /> Topics
-                  </label>
-                  <MultiSelect
-                    options={topicOptions}
-                    selected={selectedTopics}
-                    onChange={setSelectedTopics}
-                    placeholder={!selectedSubject ? 'Select a subject first' : topicOptions.length === 0 ? 'No tagged topics yet' : 'Choose topics'}
-                    className="min-h-11 bg-white"
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Focused topic practice <span className="font-normal text-slate-500">(optional)</span></p>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    Leave this off to follow the normal full-paper route. Turn it on only when you want a random set from selected topics.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-3 py-2">
+                  <span className="text-xs font-medium text-slate-700">Use focused topics</span>
+                  <Switch
+                    checked={useFocusedTopics}
+                    onCheckedChange={(checked) => {
+                      setUseFocusedTopics(checked);
+                      if (!checked) {
+                        setSelectedTopics([]);
+                      }
+                    }}
+                    disabled={!isPracticeMode || !selectedSubject || topicOptions.length === 0}
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Question count
-                  </label>
-                  <Select value={questionLimit} onValueChange={setQuestionLimit}>
-                    <SelectTrigger className="h-11 bg-white border-slate-200">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="10">10 questions</SelectItem>
-                      <SelectItem value="20">20 questions</SelectItem>
-                      <SelectItem value="30">30 questions</SelectItem>
-                      <SelectItem value="40">40 questions</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
+              {!isPracticeMode && (
+                <p className="text-xs text-slate-500">
+                  Focused topics are available in Practice mode only.
+                </p>
+              )}
+              {isPracticeMode && selectedSubject && !topicPracticeAvailable && (
+                <p className="text-xs text-slate-500">
+                  No tagged topics are available for this selection yet, so the normal paper flow is the available route right now.
+                </p>
+              )}
+              {useFocusedTopics && (
+                <>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Build by topic</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      Pick one or more topics to build a random practice set from seeded published questions already available to you.
+                    </p>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-[1.6fr_0.8fr]">
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        <Tags className="h-3.5 w-3.5" /> Topics
+                      </label>
+                      <MultiSelect
+                        options={topicOptions}
+                        selected={selectedTopics}
+                        onChange={setSelectedTopics}
+                        placeholder={!selectedSubject ? 'Select a subject first' : topicOptions.length === 0 ? 'No tagged topics yet' : 'Choose topics'}
+                        className="min-h-11 bg-white"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        Question count
+                      </label>
+                      <Select value={questionLimit} onValueChange={setQuestionLimit}>
+                        <SelectTrigger className="h-11 bg-white border-slate-200">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="10">10 questions</SelectItem>
+                          <SelectItem value="20">20 questions</SelectItem>
+                          <SelectItem value="30">30 questions</SelectItem>
+                          <SelectItem value="40">40 questions</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </>
+              )}
               {isTopicPractice && (
                 <p className="text-xs text-blue-700">
                   Starting now will build a random seeded set from the selected topics{selectedYear ? ` within ${selectedYear}` : ' across your available years'}.
