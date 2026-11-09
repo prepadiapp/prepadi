@@ -1,11 +1,11 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { PaperEditor } from '@/components/admin/PaperEditor';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, BookOpen, Calendar, Plus, Trash2, FolderKanban } from 'lucide-react';
+import { ArrowLeft, BookOpen, Calendar, Plus, Trash2, FolderKanban, Globe, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { EditPaperDialog } from '@/components/admin/EditPaperDialog';
 import { Toaster, toast } from 'sonner';
@@ -13,6 +13,27 @@ import { Toaster, toast } from 'sonner';
 export function AdminPaperManagerClient({ paper }: { paper: any }) {
   const editorRef = useRef<any>(null);
   const router = useRouter();
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  const handlePublish = async () => {
+    setIsPublishing(true);
+    try {
+      const res = await fetch(`/api/admin/papers/${paper.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'PUBLISHED', isPublic: true }),
+      });
+
+      if (!res.ok) throw new Error('Failed to publish paper');
+
+      toast.success('Paper published and available for practice');
+      router.refresh();
+    } catch {
+      toast.error('Could not publish paper. Please try again.');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
 
   const handleDeletePaper = async () => {
     if (!confirm('Are you sure? This will delete the entire paper and all its questions.')) return;
@@ -31,10 +52,10 @@ export function AdminPaperManagerClient({ paper }: { paper: any }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/50 pb-20 font-sans">
+    <div className="min-h-screen bg-slate-50/50 pb-28 font-sans md:pb-20">
       <Toaster richColors position="top-center" />
 
-      <div className="sticky top-0 z-20 border-b bg-white/80 backdrop-blur-md shadow-sm transition-all">
+      <div className="relative z-20 border-b bg-white/90 shadow-sm backdrop-blur-md transition-all md:sticky md:top-0 md:bg-white/80">
         <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
           <div className="flex w-full items-start gap-2 md:w-auto md:gap-3">
             <Link href="/admin/papers" className="mt-0.5 shrink-0 md:mt-1">
@@ -78,7 +99,29 @@ export function AdminPaperManagerClient({ paper }: { paper: any }) {
             </div>
           </div>
 
-          <div className="mt-1 flex w-full items-center justify-end gap-2 border-t border-slate-100 pt-2 md:mt-0 md:w-auto md:border-0 md:pt-0">
+          <div className="mt-1 flex w-full items-center justify-end border-t border-slate-100 pt-2 md:hidden">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 text-xs text-red-500 hover:bg-red-50 hover:text-red-700"
+              onClick={handleDeletePaper}
+            >
+              <Trash2 className="mr-1 h-4 w-4" /> Delete Paper
+            </Button>
+          </div>
+
+          <div className="hidden items-center justify-end gap-2 md:flex">
+            {paper.status !== 'PUBLISHED' && (
+              <Button
+                size="sm"
+                className="h-9 bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+                onClick={handlePublish}
+                disabled={isPublishing}
+              >
+                {isPublishing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Globe className="mr-2 h-4 w-4" />}
+                {isPublishing ? 'Publishing…' : 'Publish Paper'}
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -89,7 +132,7 @@ export function AdminPaperManagerClient({ paper }: { paper: any }) {
             </Button>
             <Button
               size="sm"
-              className="h-8 w-full bg-primary text-[10px] font-semibold shadow-md hover:bg-primary/90 sm:w-auto md:h-9 md:text-xs"
+              className="h-9 bg-primary px-4 text-sm font-semibold shadow-md hover:bg-primary/90"
               onClick={() => editorRef.current?.addQuestion()}
             >
               <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Question
@@ -101,6 +144,25 @@ export function AdminPaperManagerClient({ paper }: { paper: any }) {
       <main className="mx-auto max-w-3xl px-4 py-4 md:px-6 md:py-8">
         <PaperEditor ref={editorRef} paperId={paper.id} initialQuestions={paper.questions} apiPrefix="/api/admin" />
       </main>
+
+      <div className={`fixed inset-x-0 bottom-0 z-40 grid ${paper.status === 'PUBLISHED' ? 'grid-cols-1' : 'grid-cols-2'} gap-3 border-t border-slate-200 bg-white/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:hidden`}>
+        {paper.status !== 'PUBLISHED' && (
+          <Button
+            className="h-11 bg-emerald-600 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+            onClick={handlePublish}
+            disabled={isPublishing}
+          >
+            {isPublishing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Globe className="mr-2 h-4 w-4" />}
+            {isPublishing ? 'Publishing…' : 'Publish Paper'}
+          </Button>
+        )}
+        <Button
+          className="h-11 bg-primary text-sm font-semibold shadow-sm hover:bg-primary/90"
+          onClick={() => editorRef.current?.addQuestion()}
+        >
+          <Plus className="mr-2 h-4 w-4" /> Add Question
+        </Button>
+      </div>
     </div>
   );
 }
