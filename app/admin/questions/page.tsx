@@ -55,6 +55,7 @@ type QuestionWithDetails = {
     paperLabel: string | null;
     status: ContentStatus;
   } | null;
+  questionReviewEntries: { id: string; note: string; createdAt: string }[];
 };
 
 type FilterData = {
@@ -434,6 +435,12 @@ export default function ManageQuestionsPage() {
                                 </Badge>
                               )}
                             </div>
+                            {q.questionReviewEntries?.[0] && (
+                              <div className="max-w-xl rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                                <span className="font-semibold">Student comment: </span>
+                                {q.questionReviewEntries[0].note.replace(/^Student report:\s*/i, '')}
+                              </div>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>

@@ -61,7 +61,13 @@ export async function GET(request: Request) {
           exam: { select: { shortName: true } },
           tags: { select: { name: true } },
           paper: { select: { id: true, title: true, paperLabel: true, status: true } },
-          options: true
+          options: true,
+          questionReviewEntries: {
+            where: { note: { startsWith: 'Student report:' } },
+            select: { id: true, note: true, createdAt: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
         },
         skip: skip,
         take: limit,

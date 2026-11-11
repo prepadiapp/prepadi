@@ -21,7 +21,13 @@ export default async function PaperManagePage({ params }: PageProps) {
         include: { 
             options: true,
             section: true,
-            tags: true
+            tags: true,
+            questionReviewEntries: {
+              include: {
+                author: { select: { id: true, name: true, email: true } },
+              },
+              orderBy: { createdAt: 'desc' },
+            }
         },
         orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }]
       }

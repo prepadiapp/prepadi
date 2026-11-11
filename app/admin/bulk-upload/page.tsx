@@ -15,6 +15,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { LightweightRichTextEditor } from '@/components/admin/LightweightRichTextEditor';
+import { BulkQuestionIssuesDialog } from '@/components/BulkQuestionIssuesDialog';
+import { validateBulkQuestions, type BulkQuestionIssue } from '@/lib/bulk-question-validation';
 import { Loader2, UploadCloud, FileText, CheckCircle, Trash2, AlertTriangle, Image as ImageIcon, Sparkles, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
@@ -87,6 +89,8 @@ export default function BulkUploadPage() {
 
   // Result
   const [parsedQuestions, setParsedQuestions] = useState<ParsedQuestion[]>([]);
+  const [validationIssues, setValidationIssues] = useState<BulkQuestionIssue[]>([]);
+  const [isIssuesDialogOpen, setIsIssuesDialogOpen] = useState(false);
   const selectedExamMeta = exams.find((exam: any) => exam.id === selectedExam) as (Exam & { isYearBased?: boolean }) | undefined;
   const selectedExamIsYearBased = selectedExamMeta?.isYearBased !== false;
   const selectedTargetPaper = existingPapers.find((paper) => paper.id === targetPaperId);
@@ -239,6 +243,7 @@ export default function BulkUploadPage() {
                       section: q.section || null,
                   }));
                   setParsedQuestions(mapped);
+                  setValidationIssues(validateBulkQuestions(mapped));
                   setStep(2);
               } else {
                   toast.error("AI could not find questions.");
@@ -253,6 +258,7 @@ export default function BulkUploadPage() {
               toast.error('Could not find any questions. Check format or use AI mode.');
           } else {
               setParsedQuestions(questions);
+              setValidationIssues(validateBulkQuestions(questions));
               setStep(2);
           }
       }
@@ -310,6 +316,7 @@ export default function BulkUploadPage() {
 
           if (allNewQuestions.length > 0) {
               setParsedQuestions(allNewQuestions);
+              setValidationIssues(validateBulkQuestions(allNewQuestions));
               setStep(2);
           } else {
               toast.error("No questions could be extracted from these images.");
@@ -328,10 +335,13 @@ export default function BulkUploadPage() {
     const updated = [...parsedQuestions];
     updated[index] = { ...updated[index], [field]: value };
     setParsedQuestions(updated);
+    setValidationIssues(validateBulkQuestions(updated));
   };
 
   const deleteQuestion = (index: number) => {
-    setParsedQuestions(parsedQuestions.filter((_, i) => i !== index));
+    const updated = parsedQuestions.filter((_, i) => i !== index);
+    setParsedQuestions(updated);
+    setValidationIssues(validateBulkQuestions(updated));
   };
 
   // 6. Final Upload
@@ -346,18 +356,10 @@ export default function BulkUploadPage() {
       return;
     }
 
-    const invalidQuestion = parsedQuestions.find((question) => {
-      if (!stripFormatting(question.text || '')) return true;
-      if (question.type === 'OBJECTIVE') {
-        const validOptions = question.options.filter((option) => stripFormatting(option.text || ''));
-        const correctCount = validOptions.filter((option) => option.isCorrect).length;
-        return validOptions.length < 2 || correctCount !== 1;
-      }
-      return false;
-    });
-
-    if (invalidQuestion) {
-      toast.error('One or more questions are incomplete. Check text, options, and the correct answer before saving.');
+    const issues = validateBulkQuestions(parsedQuestions);
+    setValidationIssues(issues);
+    if (issues.length > 0) {
+      setIsIssuesDialogOpen(true);
       return;
     }
       
@@ -394,7 +396,18 @@ export default function BulkUploadPage() {
       });
 
       if (!res.ok) {
-        const data = await res.json().catch(async () => ({ error: await res.text() }));
+        const responseText = await res.text();
+        let data: { error?: string; issues?: BulkQuestionIssue[] } = {};
+        try {
+          data = responseText ? JSON.parse(responseText) : {};
+        } catch {
+          data = { error: responseText };
+        }
+        if (Array.isArray(data.issues) && data.issues.length > 0) {
+          setValidationIssues(data.issues);
+          setIsIssuesDialogOpen(true);
+          return;
+        }
         throw new Error(data.error || 'Upload failed');
       }
 
@@ -408,7 +421,7 @@ export default function BulkUploadPage() {
       }
       router.push(`/admin/papers/${data.paperId}`); 
     } catch (err) {
-      toast.error('Failed to upload questions.');
+      toast.error(err instanceof Error ? err.message : 'Failed to upload questions.');
     } finally {
       setLoading(false);
     }
@@ -737,7 +750,15 @@ export default function BulkUploadPage() {
           </Alert>
 
           {parsedQuestions.map((q, index) => (
-            <Card key={q.id} className={`relative border-l-4 ${q.type === 'THEORY' ? 'border-l-purple-500' : 'border-l-green-500'}`}>
+            <Card
+              id={`bulk-question-${index + 1}`}
+              key={q.id}
+              className={`relative border-l-4 ${
+                validationIssues.some((issue) => issue.questionNumber === index + 1)
+                  ? 'border-l-red-500 ring-1 ring-red-100'
+                  : q.type === 'THEORY' ? 'border-l-purple-500' : 'border-l-green-500'
+              }`}
+            >
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-start">
                   <div className="space-y-1 flex-1">
@@ -758,6 +779,15 @@ export default function BulkUploadPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                {validationIssues
+                  .filter((issue) => issue.questionNumber === index + 1)
+                  .map((issue, issueIndex) => (
+                    <Alert key={`${issue.field}-${issueIndex}`} variant="destructive" className="py-2">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle className="text-sm">{issue.field}</AlertTitle>
+                      <AlertDescription className="text-sm">{issue.message}</AlertDescription>
+                    </Alert>
+                  ))}
                 <LightweightRichTextEditor
                   value={q.text}
                   onChange={(value) => updateQuestion(index, 'text', value)}
@@ -833,6 +863,19 @@ export default function BulkUploadPage() {
           </div>
         </div>
       )}
+
+      <BulkQuestionIssuesDialog
+        open={isIssuesDialogOpen}
+        issues={validationIssues}
+        onOpenChange={setIsIssuesDialogOpen}
+        onSelectIssue={(issue) => {
+          setIsIssuesDialogOpen(false);
+          document.getElementById(`bulk-question-${issue.questionNumber}`)?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+          });
+        }}
+      />
     </section>
   );
 }

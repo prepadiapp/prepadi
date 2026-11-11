@@ -12,6 +12,8 @@ import { Upload, FileText, CheckCircle2, AlertCircle, Loader2, Sparkles, BrainCi
 import { Progress } from '@/components/ui/progress';
 import { Toaster, toast } from 'sonner';
 import { Subject } from '@prisma/client';
+import { BulkQuestionIssuesDialog } from '@/components/BulkQuestionIssuesDialog';
+import type { BulkQuestionIssue } from '@/lib/bulk-question-validation';
 
 export default function OrgBulkUploadPage() {
   const router = useRouter(); // Init router
@@ -21,6 +23,8 @@ export default function OrgBulkUploadPage() {
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<any>(null);
   const [useAI, setUseAI] = useState(false);
+  const [questionIssues, setQuestionIssues] = useState<BulkQuestionIssue[]>([]);
+  const [isIssuesDialogOpen, setIsIssuesDialogOpen] = useState(false);
 
   // Metadata State
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -54,6 +58,7 @@ export default function OrgBulkUploadPage() {
       setFile(e.target.files[0]);
       setResult(null);
       setProgress(0);
+      setQuestionIssues([]);
     }
   };
 
@@ -97,6 +102,12 @@ export default function OrgBulkUploadPage() {
       if (!res.ok) {
         const contentType = res.headers.get('content-type') || '';
         const errorData = contentType.includes('application/json') ? await res.json() : { error: await res.text() };
+        if (Array.isArray(errorData.issues) && errorData.issues.length > 0) {
+          setQuestionIssues(errorData.issues);
+          setIsIssuesDialogOpen(true);
+          setResult({ error: errorData.error, issues: errorData.issues });
+          return;
+        }
         throw new Error(errorData.error || errorData.message || "Upload failed");
       }
 
@@ -234,7 +245,18 @@ export default function OrgBulkUploadPage() {
                     </CardHeader>
                     <CardContent>
                         {result.error ? (
-                            <p className="text-sm text-red-700">{result.error}</p>
+                            <div className="space-y-3">
+                              <p className="text-sm text-red-700">{result.error}</p>
+                              {Array.isArray(result.issues) && result.issues.length > 0 && (
+                                <ul className="max-h-48 space-y-1 overflow-y-auto rounded-md border border-red-200 bg-white/70 p-3 text-xs text-red-800">
+                                  {result.issues.map((issue: BulkQuestionIssue, index: number) => (
+                                    <li key={`${issue.questionNumber}-${issue.field}-${index}`}>
+                                      <strong>Question {issue.questionNumber} · {issue.field}:</strong> {issue.message}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
                         ) : (
                             <div className="space-y-3 text-sm text-green-800">
                                 <div className="bg-white/50 p-3 rounded-md border border-green-200">
@@ -275,6 +297,12 @@ export default function OrgBulkUploadPage() {
             )}
         </div>
       </div>
+      <BulkQuestionIssuesDialog
+        open={isIssuesDialogOpen}
+        issues={questionIssues}
+        onOpenChange={setIsIssuesDialogOpen}
+        description="Your upload wasn't saved. Fix these items in the source document and upload it again."
+      />
     </div>
   );
 }

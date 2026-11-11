@@ -7,6 +7,7 @@ import { ensureOrganizationExamination } from '@/lib/org-examinations';
 import { getOrganizationContext } from '@/lib/organization';
 import { extractDocumentContent } from '@/lib/document-extraction';
 import { parseBulkText } from '@/lib/parser';
+import { validateBulkQuestions } from '@/lib/bulk-question-validation';
 
 export async function POST(req: Request) {
   try {
@@ -57,32 +58,13 @@ export async function POST(req: Request) {
         return new NextResponse("No questions extracted.", { status: 400 });
     }
 
-    const invalidObjectiveQuestion = parsedQuestions.find((question: any) => {
-        const isObjective = question.type !== 'THEORY';
-        if (!isObjective) return false;
-
-        const options = Array.isArray(question.options) ? question.options : [];
-        const validOptions = options.filter((option: any) => String(option?.text || '').trim().length > 0);
-        const correctCount = validOptions.filter((option: any) => Boolean(option?.isCorrect)).length;
-
-        return validOptions.length < 2 || correctCount !== 1;
+    const validationIssues = validateBulkQuestions(parsedQuestions, {
+        requireObjectiveExplanation: useAI,
     });
 
-    if (invalidObjectiveQuestion) {
-        return new NextResponse(
-            'AI could not confidently identify exactly one correct answer for every objective question. Please review the source document and try again.',
-            { status: 422 }
-        );
-    }
-
-    const missingAiExplanation = useAI && parsedQuestions.find((question: any) => {
-        if (question.type === 'THEORY') return false;
-        return !String(question.explanation || '').trim();
-    });
-
-    if (missingAiExplanation) {
-        return new NextResponse(
-            'AI did not provide explanations for every objective question. Please retry or use the admin review flow for manual correction.',
+    if (validationIssues.length > 0) {
+        return NextResponse.json(
+            { error: 'Please fix the listed questions in the source document and upload again.', issues: validationIssues },
             { status: 422 }
         );
     }

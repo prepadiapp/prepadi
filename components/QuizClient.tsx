@@ -86,6 +86,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
   } = useQuizStore();
 
   const [isMounted, setIsMounted] = useState(false);
+  const [isOnline, setIsOnline] = useState(false);
   const [expiryTimestamp, setExpiryTimestamp] = useState<Date | null>(null);
   const [isSubmitting, setLocalIsSubmitting] = useState(false); 
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -98,6 +99,25 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
   const [theoryText, setTheoryText] = useState('');
   const [aiGrading, setAiGrading] = useState<any>(null);
   const [gradingLoading, setGradingLoading] = useState(false);
+  const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+  const [reportComment, setReportComment] = useState('');
+  const [isReporting, setIsReporting] = useState(false);
+  const [reportedQuestionIds, setReportedQuestionIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    const updateOnlineStatus = () => setIsOnline(navigator.onLine);
+    updateOnlineStatus();
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    return () => {
+      window.removeEventListener('online', updateOnlineStatus);
+      window.removeEventListener('offline', updateOnlineStatus);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOnline) setIsReportDialogOpen(false);
+  }, [isOnline]);
 
   useEffect(() => {
     const duration = initialDuration || 60; 
@@ -264,6 +284,39 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
   const totalQuestions = questions.length;
   const answeredCount = answers.size;
   const isLastQuestion = currentIndex === totalQuestions - 1;
+  const canReportQuestion = isOnline && !isOffline;
+  const hasReportedCurrentQuestion = reportedQuestionIds.includes(currentQuestion.id);
+
+  const handleReportQuestion = async () => {
+    if (!canReportQuestion || isReporting || hasReportedCurrentQuestion) return;
+
+    setIsReporting(true);
+    try {
+      const response = await fetch('/api/quiz/flag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionId: currentQuestion.id,
+          assignmentId,
+          comment: reportComment,
+        }),
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || 'Could not send report');
+      }
+
+      setReportedQuestionIds((previous) => [...previous, currentQuestion.id]);
+      setReportComment('');
+      setIsReportDialogOpen(false);
+      toast.success('Question reported for review');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not send report. Please try again.');
+    } finally {
+      setIsReporting(false);
+    }
+  };
 
   const NavigatorContent = () => (
     <div className="flex flex-col h-full">
@@ -339,11 +392,29 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
 
         <Card className="flex-1 flex flex-col shadow-sm border-slate-200 overflow-hidden min-h-0">
           <CardHeader className="pb-3 bg-white border-b border-slate-100 flex-shrink-0">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap items-center justify-between gap-2">
                 <CardTitle className="text-base font-semibold">Question {currentIndex + 1}</CardTitle>
-                <span className="text-xs font-medium text-muted-foreground bg-slate-100 px-2 py-1 rounded-md uppercase tracking-wider">
-                    {questions[currentIndex].type}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground bg-slate-100 px-2 py-1 rounded-md uppercase tracking-wider">
+                      {questions[currentIndex].type}
+                  </span>
+                  {canReportQuestion && (
+                    <Button
+                      type="button"
+                      variant={hasReportedCurrentQuestion ? 'secondary' : 'outline'}
+                      size="sm"
+                      className="h-8 px-2.5 text-xs"
+                      onClick={() => setIsReportDialogOpen(true)}
+                      disabled={isReporting || hasReportedCurrentQuestion}
+                      aria-label={hasReportedCurrentQuestion ? 'Question reported' : 'Report this question'}
+                    >
+                      {hasReportedCurrentQuestion
+                        ? <Check className="mr-1.5 h-3.5 w-3.5" />
+                        : <Flag className="mr-1.5 h-3.5 w-3.5" />}
+                      {hasReportedCurrentQuestion ? 'Reported' : 'Report question'}
+                    </Button>
+                  )}
+                </div>
             </div>
           </CardHeader>
           
@@ -502,6 +573,37 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
       <aside className="hidden md:flex w-80 border-l bg-white p-6 flex-col shadow-sm z-10 h-screen sticky top-0 overflow-hidden">
         <NavigatorContent />
       </aside>
+
+      <Dialog open={isReportDialogOpen} onOpenChange={(open) => setIsReportDialogOpen(open && canReportQuestion)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Report Question {currentIndex + 1}</DialogTitle>
+            <DialogDescription>
+              Tell the review team what may be wrong. Your comment is optional and will be attached to this question.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Textarea
+              value={reportComment}
+              onChange={(event) => setReportComment(event.target.value.slice(0, 500))}
+              placeholder="For example: the answer options seem incorrect…"
+              className="min-h-28 resize-y"
+              maxLength={500}
+              disabled={isReporting}
+            />
+            <p className="text-right text-xs text-muted-foreground">{reportComment.length}/500</p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="ghost" onClick={() => setIsReportDialogOpen(false)} disabled={isReporting}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleReportQuestion} disabled={isReporting || !canReportQuestion}>
+              {isReporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Flag className="mr-2 h-4 w-4" />}
+              {isReporting ? 'Sending…' : 'Send report'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
         <DialogContent>

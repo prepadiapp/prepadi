@@ -3,6 +3,7 @@ import { questionService } from '@/lib/question-service/question-service';
 import { prisma } from '@/lib/prisma';
 import { ContentStatus, ExaminationCategory, Prisma, UserRole } from '@prisma/client';
 import { NextResponse } from 'next/server';
+import { validateBulkQuestions } from '@/lib/bulk-question-validation';
 
 type DestinationMode = 'NEW_PAPER' | 'APPEND_TO_DRAFT' | 'REVISION_FROM_PUBLISHED';
 
@@ -258,6 +259,14 @@ export async function POST(request: Request) {
 
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
       return new NextResponse('No questions provided', { status: 400 });
+    }
+
+    const validationIssues = validateBulkQuestions(questions);
+    if (validationIssues.length > 0) {
+      return NextResponse.json(
+        { error: 'Please fix the listed questions before uploading.', issues: validationIssues },
+        { status: 422 }
+      );
     }
 
     const firstQuestion = questions[0];
