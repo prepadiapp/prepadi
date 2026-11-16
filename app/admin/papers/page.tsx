@@ -41,7 +41,7 @@ interface PaperRecord {
   questionCount: number;
   flaggedQuestionCount: number;
   organization?: { id: string; name: string } | null;
-  exam?: { id: string; name: string; shortName: string } | null;
+  exam?: { id: string; name: string; shortName: string; isYearBased?: boolean } | null;
   subject?: { id: string; name: string } | null;
   examination?: { id: string; title: string; category: string; status: ContentStatus; year?: number | null } | null;
 }

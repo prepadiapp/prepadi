@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Dialog, 
@@ -26,6 +26,7 @@ interface EditPaperDialogProps {
     id: string;
     title: string;
     year?: number | null; 
+    practiceEnabled?: boolean;
     isPublic?: boolean;
     isVerified?: boolean; 
     status?: ContentStatus;
@@ -33,7 +34,7 @@ interface EditPaperDialogProps {
     randomizeQuestions?: boolean;
     allowCustomOrder?: boolean;
     paperLabel?: string | null;
-    exam?: { shortName: string } | null;
+    exam?: { shortName: string; isYearBased?: boolean } | null;
     subject?: { name: string } | null;
   };
   trigger?: React.ReactNode;
@@ -54,6 +55,21 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
   const [randomizeQuestions, setRandomizeQuestions] = useState(paper.randomizeQuestions || false);
   const [allowCustomOrder, setAllowCustomOrder] = useState(paper.allowCustomOrder ?? true);
   const [paperLabel, setPaperLabel] = useState(paper.paperLabel || '');
+  const [year, setYear] = useState(paper.year?.toString() || '');
+  const [practiceEnabled, setPracticeEnabled] = useState(paper.practiceEnabled || false);
+
+  useEffect(() => {
+    if (!open) return;
+    setTitle(paper.title);
+    setIsPublic(paper.isPublic || false);
+    setIsVerified(paper.isVerified || false);
+    setDuration(paper.duration?.toString() || '');
+    setRandomizeQuestions(paper.randomizeQuestions || false);
+    setAllowCustomOrder(paper.allowCustomOrder ?? true);
+    setPaperLabel(paper.paperLabel || '');
+    setYear(paper.year?.toString() || '');
+    setPracticeEnabled(paper.practiceEnabled || false);
+  }, [open, paper]);
 
   const isAdmin = session?.user?.role === UserRole.ADMIN;
   const isOrg = session?.user?.role === UserRole.ORGANIZATION;
@@ -61,6 +77,10 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
   const handleSave = async () => {
     if (!title.trim()) {
       toast.error("Paper title cannot be empty");
+      return;
+    }
+    if (isAdmin && year.trim() && (!Number.isSafeInteger(Number(year)) || Number(year) < 1)) {
+      toast.error('Enter a valid whole-number year, or leave it blank.');
       return;
     }
 
@@ -86,6 +106,8 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
           payload.randomizeQuestions = randomizeQuestions;
           payload.allowCustomOrder = allowCustomOrder;
           payload.paperLabel = paperLabel || null;
+          payload.year = year.trim() ? Number(year) : null;
+          payload.practiceEnabled = practiceEnabled;
       }
 
       const res = await fetch(`${prefix}/papers/${paper.id}`, {
@@ -94,7 +116,10 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
         body: JSON.stringify(payload)
       });
 
-      if (!res.ok) throw new Error("Failed to update paper");
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Failed to update paper");
+      }
       
       toast.success("Paper updated successfully");
       setOpen(false);
@@ -238,6 +263,27 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
           {isAdmin && (
             <>
               <div className="space-y-2">
+                <Label htmlFor="paper-year-admin" className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Year
+                </Label>
+                <Input
+                  id="paper-year-admin"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step={1}
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  placeholder={paper.exam?.isYearBased === false ? 'Leave blank for no year' : 'Enter paper year'}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {paper.exam?.isYearBased === false
+                    ? 'This exam uses paper titles instead of years. You can leave this blank.'
+                    : 'Changing the year updates the paper metadata used for student paper selection.'}
+                </p>
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="paperLabel-admin" className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Paper Label
                 </Label>
@@ -289,6 +335,18 @@ export function EditPaperDialog({ paper, trigger, onSuccess }: EditPaperDialogPr
                   </p>
                 </div>
                 <Switch id="randomize-mode-admin" checked={randomizeQuestions} onCheckedChange={setRandomizeQuestions} />
+              </div>
+
+              <div className="flex items-center justify-between space-x-2 border border-slate-200 p-3 rounded-lg bg-slate-50/30">
+                <div className="space-y-0.5">
+                  <Label htmlFor="practice-mode-admin" className="text-sm font-medium text-slate-900 flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-slate-500" /> Student Practice
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Allow this paper to appear in student practice, when it is published.
+                  </p>
+                </div>
+                <Switch id="practice-mode-admin" checked={practiceEnabled} onCheckedChange={setPracticeEnabled} />
               </div>
 
               <div className="flex items-center justify-between space-x-2 border border-slate-200 p-3 rounded-lg bg-slate-50/30">

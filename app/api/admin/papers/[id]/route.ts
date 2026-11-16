@@ -125,6 +125,14 @@ export async function PATCH(
       return new NextResponse('Paper not found', { status: 404 });
     }
 
+    if (
+      body.year !== undefined &&
+      body.year !== null &&
+      (!Number.isSafeInteger(Number(body.year)) || Number(body.year) < 1)
+    ) {
+      return NextResponse.json({ error: 'Year must be a positive whole number.' }, { status: 400 });
+    }
+
     const nextStatus = (body.status as ContentStatus | undefined) ?? existing.status;
     const isPublic =
       body.isPublic !== undefined
@@ -141,6 +149,7 @@ export async function PATCH(
         title: body.title?.trim() ?? existing.title,
         paperLabel:
           body.paperLabel !== undefined ? body.paperLabel?.trim() || null : existing.paperLabel,
+        year: body.year !== undefined ? (body.year === null || body.year === '' ? null : Number(body.year)) : existing.year,
         status: nextStatus,
         isPublic,
         isVerified:
