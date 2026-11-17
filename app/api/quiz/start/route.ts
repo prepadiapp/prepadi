@@ -32,6 +32,7 @@ export async function POST(request: Request) {
           ? {
               instruction: q.section.instruction,
               passage: q.section.passage,
+              imageUrl: q.section.imageUrl,
             }
           : undefined,
         options: q.options.map((opt: any) => ({
@@ -69,6 +70,7 @@ export async function POST(request: Request) {
         ? {
             instruction: q.section.instruction,
             passage: q.section.passage,
+            imageUrl: q.section.imageUrl,
           }
         : undefined,
       options: q.options.map((opt: any) => ({

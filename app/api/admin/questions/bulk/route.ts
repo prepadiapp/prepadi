@@ -182,7 +182,8 @@ async function upsertRevisionUploadQuestions(args: {
       year: args.resolvedYear,
       paperId: args.paperId,
       order: orderOffset + index + 1,
-    }))
+    })),
+    { allowDuplicateText: true }
   );
 
   return {
@@ -431,7 +432,8 @@ export async function POST(request: Request) {
           year: resolvedYear,
           paperId,
           order: orderOffset + index + 1,
-        }))
+        })),
+        { allowDuplicateText: true }
       );
       createdQuestionCount = created.length;
     }

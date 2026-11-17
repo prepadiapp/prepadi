@@ -29,7 +29,7 @@ export async function POST(req: Request) {
           text: q.text,
           type: q.type,
           options: q.options,
-          section: q.section ? { instruction: q.section.instruction, passage: q.section.passage } : null,
+          section: q.section ? { instruction: q.section.instruction, passage: q.section.passage, imageUrl: q.section.imageUrl } : null,
           imageUrl: q.imageUrl
         }))
       });
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
         text: q.text,
         type: q.type,
         options: q.options,
-        section: q.section ? { instruction: q.section.instruction, passage: q.section.passage } : null,
+          section: q.section ? { instruction: q.section.instruction, passage: q.section.passage, imageUrl: q.section.imageUrl } : null,
         imageUrl: q.imageUrl
       }))
     };

@@ -371,6 +371,7 @@ export async function resolveStudentTopicPracticeSession(args: {
         ? {
             instruction: question.section.instruction,
             passage: question.section.passage,
+            imageUrl: question.section.imageUrl,
           }
         : null,
       options: question.options.map((option: any) => ({

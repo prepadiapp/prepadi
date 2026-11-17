@@ -40,16 +40,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!await verifyOrgAccess(id, orgId)) return new NextResponse('Forbidden: You do not own this question', { status: 403 });
 
     const body = await req.json();
-    const { text, explanation, imageUrl, options, section, type, isFlagged, reviewNote, moderationStatus } = body;
+    const { text, explanation, imageUrl, options, section, sectionImageUrl, type, isFlagged, reviewNote, moderationStatus } = body;
 
     // --- Handle Section ---
     let sectionId: string | null | undefined = undefined;
     if (section !== undefined) {
         if (section && section.trim() !== '') {
             const sectionText = section.trim();
-            let dbSection = await prisma.section.findFirst({ where: { instruction: sectionText } });
+            const currentQuestion = await prisma.question.findUnique({
+                where: { id },
+                select: { section: { select: { id: true, instruction: true } } },
+            });
+            const currentSection = currentQuestion?.section;
+            const currentSectionId = currentSection && currentSection.instruction === sectionText ? currentSection.id : undefined;
+            let dbSection = currentSectionId
+                ? await prisma.section.findUnique({ where: { id: currentSectionId } })
+                : await prisma.section.findFirst({ where: { instruction: sectionText } });
             if (!dbSection) {
-                dbSection = await prisma.section.create({ data: { instruction: sectionText } });
+                dbSection = await prisma.section.create({ data: { instruction: sectionText, imageUrl: sectionImageUrl || null } });
+            } else if (sectionImageUrl !== undefined) {
+                dbSection = await prisma.section.update({ where: { id: dbSection.id }, data: { imageUrl: sectionImageUrl || null } });
             }
             sectionId = dbSection.id;
         } else {

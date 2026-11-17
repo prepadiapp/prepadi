@@ -43,7 +43,7 @@ export default function JoinPage() {
   const handleAcceptAsUser = async () => {
     setProcessing(true);
     try {
-        const res = await fetch('/api/organization/join', {
+        const res = await fetch('/api/organization/invite/join', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token }),

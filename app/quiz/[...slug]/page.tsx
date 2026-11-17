@@ -84,6 +84,7 @@ async function getQuizData(slug: string[] | undefined, searchParams: { tags?: st
             section: q.section ? {
                 instruction: q.section.instruction,
                 passage: q.section.passage,
+                imageUrl: q.section.imageUrl,
             } : null,
             options: q.options.map((opt) => ({
                 id: opt.id,
@@ -129,6 +130,7 @@ async function getQuizData(slug: string[] | undefined, searchParams: { tags?: st
         section: q.section ? {
           instruction: q.section.instruction,
           passage: q.section.passage,
+          imageUrl: q.section.imageUrl,
         } : null,
         options: q.options.map((opt: any) => ({
           id: opt.id,
@@ -252,6 +254,7 @@ async function getQuizData(slug: string[] | undefined, searchParams: { tags?: st
       section: q.section ? {
         instruction: q.section.instruction,
         passage: q.section.passage,
+        imageUrl: q.section.imageUrl,
       } : null,
       options: q.options.map((opt: any) => ({
         id: opt.id,

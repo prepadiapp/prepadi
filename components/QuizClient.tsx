@@ -431,6 +431,12 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
                            html={currentQuestion.section.instruction} 
                            className="text-sm font-medium text-slate-800 mb-2 prose prose-sm max-w-none" 
                         />
+                        {currentQuestion.section.imageUrl && (
+                            <div className="my-3 overflow-hidden rounded-md border border-slate-200 bg-white">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={currentQuestion.section.imageUrl} alt="Section instruction" className="mx-auto h-auto max-h-80 w-full object-contain" />
+                            </div>
+                        )}
                         {currentQuestion.section.passage && (
                              <div className="border-t border-slate-200 pt-2 mt-2">
                                 <SafeHTML 

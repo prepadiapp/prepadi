@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 
 interface QuestionWithOptions extends Question {
   options: Option[];
+  section?: { id?: string; instruction: string; passage?: string | null; imageUrl?: string | null } | null;
 }
 
 interface PaperEditorProps {
@@ -56,7 +57,13 @@ export const PaperEditor = forwardRef((
   };
 
   const handleUpdateQuestion = (updatedQ: QuestionWithOptions) => {
-    setQuestions(prev => prev.map(q => q.id === updatedQ.id ? updatedQ : q));
+    setQuestions((prev) => prev.map((question) => {
+      if (question.id === updatedQ.id) return updatedQ;
+      if (updatedQ.sectionId && question.sectionId === updatedQ.sectionId) {
+        return { ...question, section: updatedQ.section };
+      }
+      return question;
+    }));
   };
 
   const handleDeleteQuestion = async (id: string) => {

@@ -75,7 +75,7 @@ export async function PATCH(
     const body = await request.json();
     const {
       text, explanation, imageUrl, year, subjectId, examId, options, tags,
-      type, section, isFlagged, reviewNote, moderationStatus,
+      type, section, sectionImageUrl, isFlagged, reviewNote, moderationStatus,
     } = body;
 
     // --- 1. Validation ---
@@ -120,12 +120,23 @@ export async function PATCH(
     if (section !== undefined) {
         if (section && section.trim() !== '') {
             const sectionText = section.trim();
-            let dbSection = await prisma.section.findFirst({
-                where: { instruction: sectionText }
+            const currentQuestion = await prisma.question.findUnique({
+                where: { id },
+                select: { section: { select: { id: true, instruction: true } } },
             });
+            const currentSection = currentQuestion?.section;
+            const currentSectionId = currentSection && currentSection.instruction === sectionText ? currentSection.id : undefined;
+            let dbSection = currentSectionId
+                ? await prisma.section.findUnique({ where: { id: currentSectionId } })
+                : await prisma.section.findFirst({ where: { instruction: sectionText } });
             if (!dbSection) {
                 dbSection = await prisma.section.create({
-                data: { instruction: sectionText }
+                data: { instruction: sectionText, imageUrl: sectionImageUrl || null }
+                });
+            } else if (sectionImageUrl !== undefined) {
+                dbSection = await prisma.section.update({
+                    where: { id: dbSection.id },
+                    data: { imageUrl: sectionImageUrl || null },
                 });
             }
             sectionId = dbSection.id;

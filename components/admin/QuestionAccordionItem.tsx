@@ -32,7 +32,7 @@ import { LightweightRichTextEditor } from './LightweightRichTextEditor';
 
 interface QuestionWithOptions extends Question {
   options: Option[];
-  section?: { instruction: string } | null;
+  section?: { instruction: string; imageUrl?: string | null } | null;
   tags?: { id: string; name: string }[];
   questionReviewEntries?: {
     id: string;
@@ -66,6 +66,7 @@ export function QuestionAccordionItem({
   const [isSaving, setIsSaving] = useState(false);
   const [autosaveState, setAutosaveState] = useState<AutosaveState>('idle');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isUploadingSectionImage, setIsUploadingSectionImage] = useState(false);
 
   const isAdmin = apiPrefix === '/api/admin';
   const initialLoadRef = useRef(true);
@@ -80,10 +81,19 @@ export function QuestionAccordionItem({
         text: normalizeOptionText(option.text || ''),
       })) || [],
     section: question.section?.instruction || '',
+    sectionImageUrl: question.section?.imageUrl || '',
     tags: question.tags?.map((t) => t.name) || [],
     isFlagged: question.isFlagged || false,
     reviewNote: '',
   });
+
+  useEffect(() => {
+    setFormData((prev) => ({
+      ...prev,
+      section: question.section?.instruction || '',
+      sectionImageUrl: question.section?.imageUrl || '',
+    }));
+  }, [question.section?.instruction, question.section?.imageUrl]);
 
   const persistChanges = async (closeAfterSave: boolean) => {
     setIsSaving(true);
@@ -100,6 +110,7 @@ export function QuestionAccordionItem({
             text: normalizeOptionText(option.text || ''),
           })),
           section: formData.section,
+          sectionImageUrl: formData.sectionImageUrl,
           tags: isAdmin ? formData.tags : undefined,
           isFlagged: formData.isFlagged,
           reviewNote: formData.reviewNote || undefined,
@@ -149,6 +160,7 @@ export function QuestionAccordionItem({
     formData.explanation,
     formData.imageUrl,
     formData.section,
+    formData.sectionImageUrl,
     formData.options,
     formData.tags,
     formData.isFlagged,
@@ -205,6 +217,24 @@ export function QuestionAccordionItem({
       toast.error(message);
     } finally {
       setIsUploadingImage(false);
+    }
+  };
+
+  const handleSectionImageUpload = async (file?: File | null) => {
+    if (!file) return;
+    setIsUploadingSectionImage(true);
+    try {
+      const payload = new FormData();
+      payload.append('file', file);
+      const res = await fetch('/api/uploads/question-image', { method: 'POST', body: payload });
+      if (!res.ok) throw new Error((await res.text()) || 'Upload failed');
+      const data = await res.json();
+      setFormData((prev) => ({ ...prev, sectionImageUrl: data.url }));
+      toast.success('Section image uploaded');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to upload section image');
+    } finally {
+      setIsUploadingSectionImage(false);
     }
   };
 
@@ -284,6 +314,19 @@ export function QuestionAccordionItem({
                     className="min-h-[76px] text-xs md:text-sm"
                     placeholder="e.g. Read the passage below and answer questions 1-5..."
                   />
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-blue-300 hover:text-blue-700">
+                      <UploadCloud className="h-3.5 w-3.5" />
+                      {isUploadingSectionImage ? 'Uploading...' : formData.sectionImageUrl ? 'Replace section image' : 'Upload section image'}
+                      <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" disabled={isUploadingSectionImage} onChange={(e) => { void handleSectionImageUpload(e.target.files?.[0]); e.currentTarget.value = ''; }} />
+                    </Label>
+                    {formData.sectionImageUrl && (
+                      <>
+                        <a href={formData.sectionImageUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:text-blue-700">Preview image</a>
+                        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs text-slate-500" onClick={() => setFormData((prev) => ({ ...prev, sectionImageUrl: '' }))}>Remove</Button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-1">

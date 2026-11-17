@@ -13,6 +13,7 @@ export type SanitizedQuestion = {
   section?: {
     instruction: string; 
     passage: string | null;
+    imageUrl?: string | null;
   } | null;
   options: SanitizedOption[];
 };

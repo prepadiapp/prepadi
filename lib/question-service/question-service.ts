@@ -180,7 +180,10 @@ class QuestionService {
     return allYears;
   }
 
-  public async bulkCreate(questions: StandardizedQuestion[]): Promise<QuestionWithOptions[]> {
+  public async bulkCreate(
+    questions: StandardizedQuestion[],
+    options: { allowDuplicateText?: boolean } = {}
+  ): Promise<QuestionWithOptions[]> {
     if (questions.length === 0) return [];
     
     // De-duplicate section names
@@ -208,11 +211,13 @@ class QuestionService {
     };
 
     for (const q of questions) {
-        const exists = await prisma.question.findFirst({
-            where: q.paperId
-                ? { text: q.text, paperId: q.paperId }
-                : { text: q.text, subjectId: q.dbSubjectId, examId: q.dbExamId, year: q.year },
-        });
+        const exists = options.allowDuplicateText
+            ? null
+            : await prisma.question.findFirst({
+                where: q.paperId
+                    ? { text: q.text, paperId: q.paperId }
+                    : { text: q.text, subjectId: q.dbSubjectId, examId: q.dbExamId, year: q.year },
+            });
 
         if (!exists) {
             const sectionId = q.sectionName ? sectionMap.get(q.sectionName) : undefined;

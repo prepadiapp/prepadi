@@ -355,6 +355,7 @@ model Section {
   id          String     @id @default(cuid())
   instruction String     @db.Text 
   passage     String?    @db.Text
+  imageUrl    String?
   questions   Question[]
 }
 
