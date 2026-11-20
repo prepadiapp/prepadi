@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Sparkles, ArrowRight } from 'lucide-react';
+import { X, Crown, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import Link from 'next/link';
@@ -38,40 +38,40 @@ export function UpgradeBanner({ isPro, isOrgMember }: UpgradeBannerProps) {
 
   return (
     <div className="animate-in slide-in-from-top-4 duration-500 mb-6">
-      <Card className="relative overflow-hidden border-none bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg">
+      <Card className="relative overflow-hidden rounded-3xl border border-[#E5E9F7] bg-gradient-to-br from-white via-white to-[#F7F8FF] text-slate-950 shadow-[0_12px_35px_rgba(15,23,42,0.06)]">
         {/* Decorative Background Elements */}
-        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-40 h-40 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
+        <div aria-hidden="true" className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full bg-[#FF6600]/[0.07] blur-3xl" />
+        <div aria-hidden="true" className="pointer-events-none absolute -bottom-12 -left-8 h-40 w-40 rounded-full bg-[#0000FE]/[0.04] blur-3xl" />
 
         {/* Mobile Dismiss Button */}
         <button 
             onClick={handleDismiss}
-            className="absolute top-2 right-2 p-2 bg-black/10 rounded-full text-white/80 hover:text-white hover:bg-black/20 md:hidden z-20"
+            className="absolute right-3 top-3 z-20 rounded-full bg-slate-100 p-2 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900 md:hidden"
             aria-label="Dismiss banner"
         >
             <X className="w-4 h-4" />
         </button>
 
-        <div className="relative p-5 sm:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 z-10">
+        <div className="relative z-10 flex flex-col items-start justify-between gap-5 p-5 sm:p-6 md:flex-row md:items-center">
           <div className="flex items-start gap-4 pr-8 md:pr-0">
-            <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm shrink-0 hidden sm:flex">
-              <Sparkles className="w-6 h-6 text-yellow-300" />
+            <div className="hidden shrink-0 rounded-2xl border border-orange-100 bg-orange-50 p-3 sm:flex">
+              <Crown className="h-6 w-6 text-[#E05224]" />
             </div>
             <div className="space-y-1.5">
-              <h3 className="font-bold text-lg tracking-tight flex items-center gap-2">
-                 <Sparkles className="w-5 h-5 text-yellow-300 sm:hidden" />
+              <h3 className="flex items-center gap-2 text-lg font-extrabold tracking-tight text-slate-950 sm:text-xl">
+                 <Crown className="h-5 w-5 text-[#E05224] sm:hidden" />
                  Unlock Your Full Potential
               </h3>
-              <p className="text-blue-100 text-sm max-w-md leading-relaxed">
+              <p className="max-w-md text-sm leading-relaxed text-slate-600">
                 Get unlimited practice exams, detailed performance insights, and subject mastery tracking with Prepadi Pro.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
+          <div className="mt-1 flex w-full items-center gap-3 md:mt-0 md:w-auto">
             <Button 
               variant="secondary" 
-              className="w-full md:w-auto font-semibold text-blue-600 hover:bg-blue-50 whitespace-nowrap shadow-sm"
+              className="h-11 w-full whitespace-nowrap rounded-xl bg-[#0000FE] font-bold text-white shadow-sm hover:bg-[#0000CC] md:w-auto"
               asChild
             >
               <Link href="/dashboard/billing">
@@ -82,7 +82,7 @@ export function UpgradeBanner({ isPro, isOrgMember }: UpgradeBannerProps) {
             {/* Desktop Dismiss Button */}
             <button 
               onClick={handleDismiss}
-              className="hidden md:flex p-2 hover:bg-white/20 rounded-full transition-colors text-white/80 hover:text-white shrink-0"
+              className="hidden shrink-0 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 md:flex"
               aria-label="Dismiss banner"
             >
               <X className="w-5 h-5" />

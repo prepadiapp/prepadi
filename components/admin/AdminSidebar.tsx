@@ -75,7 +75,7 @@ export function AdminSidebar() {
     <div className="flex flex-col h-full bg-white/95 backdrop-blur-sm">
       <div className="flex h-[60px] items-center border-b px-6">
         <Link href="/admin" className="flex items-center gap-2 font-bold text-xl text-primary" onClick={() => setOpen(false)}>
-          <Layers className="h-6 w-6" />
+          <img src="/prepadi_logo.png" alt="" className="h-7 w-7 object-contain" />
           <span>Prepadi Admin</span>
         </Link>
       </div>

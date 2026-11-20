@@ -48,9 +48,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         
         {/* Apple Touch Icons */}
-        <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
-        <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
-        <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512x512.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         
         {/* Apple Splash Screens - Blue background */}
         <link

@@ -27,11 +27,12 @@ interface QuizState {
   
   status: 'loading' | 'active' | 'finished';
   startTime: Date | null;
+  expiresAt: Date | null;
   timeLimitMinutes: number;
   
   mode: QuizMode;
 
-  startQuiz: (questions: SanitizedQuestion[], mode: QuizMode, timeLimit?: number) => void;
+  startQuiz: (questions: SanitizedQuestion[], mode: QuizMode, timeLimit?: number, saved?: { answers: Map<string, string>; currentIndex: number; startTime: Date; expiresAt: Date | null }) => void;
   selectAnswer: (questionId: string, optionId: string) => void;
   goToQuestion: (index: number) => void;
   nextQuestion: () => void;
@@ -46,16 +47,18 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   currentIndex: 0,
   status: 'loading',
   startTime: null,
+  expiresAt: null,
   timeLimitMinutes: 45,
   mode: 'EXAM',
 
-  startQuiz: (questions, mode, timeLimit) => {
+  startQuiz: (questions, mode, timeLimit, saved) => {
     set({
       questions,
-      answers: new Map(),
-      currentIndex: 0,
+      answers: saved?.answers ?? new Map(),
+      currentIndex: saved?.currentIndex ?? 0,
       status: 'active',
-      startTime: new Date(),
+      startTime: saved?.startTime ?? new Date(),
+      expiresAt: saved?.expiresAt ?? (mode === 'EXAM' ? new Date(Date.now() + (timeLimit || 45) * 60 * 1000) : null),
       mode: mode,
       timeLimitMinutes: timeLimit || 45,
     });
@@ -105,6 +108,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       currentIndex: 0,
       status: 'loading',
       startTime: null,
+      expiresAt: null,
     });
   },
 }));

@@ -88,7 +88,7 @@ export async function POST(req: Request) {
       include: { 
           questions: {
               include: { options: true, tags: true },
-              orderBy: { order: 'asc' },
+              orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
           } 
       }
     });

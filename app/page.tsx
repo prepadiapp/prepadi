@@ -1,306 +1,793 @@
-import Link from "next/link";
+// @ts-nocheck
+'use client';
+import { useState, useEffect } from 'react';
+import { signOut, useSession } from 'next-auth/react';
 import {
-  ArrowRight,
-  BookOpenCheck,
-  Building2,
-  CheckCircle2,
-  Clock3,
-  Database,
-  GraduationCap,
-  LayoutDashboard,
-  ShieldCheck,
   Wifi,
-} from "lucide-react";
+  WifiOff,
+  CheckCircle2,
+  Clock,
+  ArrowRight,
+  GraduationCap,
+  Building2,
+  BarChart3,
+  MonitorPlay,
+  LogOut,
+} from 'lucide-react';
 
-import { Reveal } from "@/components/marketing/Reveal";
-import { Button } from "@/components/ui/button";
-
-const uspCards = [
+// ============================================================================
+// SHARED CURATED NIGERIAN EXAM DATA (JAMB, WAEC, NECO)
+// ============================================================================
+const EXAM_CARDS = [
   {
-    title: "Timed exam practice",
-    description:
-      "Students practise with seeded papers in a CBT flow that feels familiar, focused, and easier to trust.",
-    icon: Clock3,
+    id: 'physics',
+    tabLabel: 'JAMB Physics',
+    badge: 'JAMB UTME • 2024',
+    paperCode: 'PHY-204',
+    topic: 'Projectile Motion',
+    questionNumber: 'Q.14 of 40',
+    question:
+      'A ball is projected horizontally from the top of a hill with a velocity of 30 m/s. If it reaches the ground in 4 seconds, what is the height of the hill? [g = 10 m/s²]',
+    options: [
+      { id: 'A', text: '60 m' },
+      { id: 'B', text: '80 m' },
+      { id: 'C', text: '120 m' },
+      { id: 'D', text: '160 m' }
+    ],
+    correct: 'B',
+    explanation: 'Using h = ½gt² → h = 0.5 × 10 × (4)² = 5 × 16 = 80m.'
   },
   {
-    title: "Content you control",
-    description:
-      "Admins publish the papers students can actually access, keeping practice structured and reliable.",
-    icon: Database,
+    id: 'chemistry',
+    tabLabel: 'WAEC Chemistry',
+    badge: 'WASSCE • 2024',
+    paperCode: 'CHM-108',
+    topic: 'Gas Laws & Stoichiometry',
+    questionNumber: 'Q.08 of 50',
+    question:
+      'What volume of oxygen at S.T.P is required to completely burn 100 cm³ of methane (CH₄) according to the equation: CH₄ + 2O₂ → CO₂ + 2H₂O?',
+    options: [
+      { id: 'A', text: '100 cm³' },
+      { id: 'B', text: '150 cm³' },
+      { id: 'C', text: '200 cm³' },
+      { id: 'D', text: '400 cm³' }
+    ],
+    correct: 'C',
+    explanation: 'By Gay-Lussac’s law, 1 vol of CH₄ reacts with 2 vols of O₂ → 100 × 2 = 200 cm³.'
   },
   {
-    title: "Built for schools too",
-    description:
-      "Organizations can create examinations, schedule assignments, and review student performance from one workspace.",
-    icon: Building2,
+    id: 'english',
+    tabLabel: 'WAEC English',
+    badge: 'WASSCE • 2024',
+    paperCode: 'ENG-109',
+    topic: 'Lexis & Opposite in Meaning',
+    questionNumber: 'Q.22 of 60',
+    question:
+      'Choose the word that is nearly OPPOSITE in meaning to the underlined word: The bursar was commended for his FRUGAL handling of school funds.',
+    options: [
+      { id: 'A', text: 'Prudent' },
+      { id: 'B', text: 'Extravagant' },
+      { id: 'C', text: 'Transparent' },
+      { id: 'D', text: 'Reluctant' }
+    ],
+    correct: 'B',
+    explanation: '“Frugal” means economical or sparing; its direct antonym is “Extravagant”.'
   },
+  {
+    id: 'maths',
+    tabLabel: 'NECO Maths',
+    badge: 'NECO SSCE • 2024',
+    paperCode: 'MTH-302',
+    topic: 'Logarithms & Indices',
+    questionNumber: 'Q.09 of 50',
+    question: 'Find the value of x for which 2^(2x + 1) = 32.',
+    options: [
+      { id: 'A', text: 'x = 1.5' },
+      { id: 'B', text: 'x = 2.0' },
+      { id: 'C', text: 'x = 2.5' },
+      { id: 'D', text: 'x = 3.0' }
+    ],
+    correct: 'B',
+    explanation: 'Since 32 = 2⁵, 2x + 1 = 5 → 2x = 4 → x = 2.0.'
+  }
 ];
 
-const featureList = [
-  "Students practise only from seeded, published papers",
-  "Schools can create examinations, assignments, and subject-specific workflows",
-  "Progress and results stay easy to scan for learners and organizations",
-  "Offline-ready support helps students continue in low-connectivity moments",
-];
+// VERSION 1: CLEAN MODERN SAAS BENTO (PREPADI BLUE & ORANGE)
+// ============================================================================
+function VersionOneSaaSBento() {
+  const { data: session, status: authStatus } = useSession();
+  const [heroMode, setHeroMode] = useState('student'); // 'student' | 'school'
+  const [questionIdx, setQuestionIdx] = useState(0);
+  const [selectedAns, setSelectedAns] = useState({ 0: 'B' });
+  const [isOfflineSim, setIsOfflineSim] = useState(false);
+  const [bentoOfflineTest, setBentoOfflineTest] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(2685); // 44:45
 
-const heroHighlights = [
-  {
-    label: "For students",
-    value: "Practice with confidence",
-    note: "Timed papers, cleaner focus, and a calmer CBT experience.",
-    icon: GraduationCap,
-  },
-  {
-    label: "For schools",
-    value: "Run exams with structure",
-    note: "Create, publish, assign, and review from one dashboard.",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "For real prep",
-    value: "Seeded and controlled",
-    note: "Only approved papers go live for student practice.",
-    icon: BookOpenCheck,
-  },
-];
+  useEffect(() => {
+    const t = setInterval(() => {
+      setTimeLeft((prev) => (prev > 1 ? prev - 1 : 2700));
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
 
-export default function HomePage() {
+  const formatClock = (secs) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  const activeQ = EXAM_CARDS[questionIdx];
+  const userPick = selectedAns[questionIdx];
+
   return (
-    <div className="relative overflow-hidden">
-      <div className="animate-pulse-glow absolute left-[-10rem] top-24 -z-10 h-72 w-72 rounded-full bg-[radial-gradient(circle,_rgba(75,113,254,0.18),_transparent_70%)] blur-2xl" />
-      <div className="animate-float-soft-delayed absolute right-[-6rem] top-36 -z-10 h-80 w-80 rounded-full bg-[radial-gradient(circle,_rgba(116,157,255,0.18),_transparent_68%)] blur-3xl" />
-      <div className="absolute inset-x-0 top-0 -z-10 h-[38rem] bg-[radial-gradient(circle_at_top,_rgba(75,113,254,0.22),_transparent_55%)]" />
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-[#0000FE] selection:text-white">
+      {/* Subtle Top Mesh Glow */}
+      <div className="relative overflow-hidden">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[420px] bg-gradient-to-tr from-[#0000FE]/15 via-[#FF6600]/10 to-[#FF6600]/10 blur-3xl rounded-full"
+        />
 
-      <section className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 pb-16 pt-6 sm:px-8 lg:px-10">
-        <Reveal y={10}>
-          <header className="surface-glass shadow-brand-xl flex items-center justify-between rounded-full border border-[color:var(--primary-border)] px-4 py-3 md:px-6">
+        {/* Navbar */}
+        <header className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5">
+          <div className="bg-white/90 backdrop-blur-md border border-slate-200/90 rounded-2xl px-3 sm:px-6 py-3 shadow-xs flex items-center justify-between gap-2 sm:gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-lg font-semibold text-primary-foreground shadow-[0_14px_30px_rgba(75,113,254,0.28)]">
-                P
-              </div>
+              <img
+                src="/prepadi_logo.png"
+                alt="Prepadi logo"
+                className="h-9 w-9 shrink-0 rounded-xl object-cover shadow-sm sm:h-10 sm:w-10"
+              />
               <div>
-                <p className="text-lg font-semibold tracking-tight text-foreground">Prepadi</p>
-                <p className="text-xs text-muted-foreground">CBT prep for Nigerian learners</p>
+                <span className="block text-base font-bold leading-none tracking-tight text-slate-900 sm:text-lg">
+                  Prepadi
+                </span>
+                <span className="hidden text-xs font-medium text-slate-500 sm:block">
+                  CBT prep for Nigerian learners
+                </span>
               </div>
             </div>
 
-            <nav className="hidden items-center gap-2 md:flex">
-              <Button asChild variant="ghost" className="text-sm text-slate-600 hover:text-primary">
-                <Link href="/login">Login</Link>
-              </Button>
-              <Button
-                asChild
-                className="rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-[0_16px_40px_rgba(75,113,254,0.25)] hover:bg-[color:var(--primary-hover)]"
-              >
-                <Link href="/signup">Get Started</Link>
-              </Button>
+            <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
+              <a href="#v1-simulator" className="hover:text-[#0000FE] transition-colors">
+                Simulator
+              </a>
+              <a href="#v1-bento" className="hover:text-[#0000FE] transition-colors">
+                Platform Features
+              </a>
+              <a href="#v1-workflow" className="hover:text-[#0000FE] transition-colors">
+                For Schools
+              </a>
+              <a href="#v1-pricing" className="hover:text-[#0000FE] transition-colors">
+                Pricing
+              </a>
             </nav>
-          </header>
-        </Reveal>
 
-        <div className="grid flex-1 items-center gap-14 py-14 lg:grid-cols-[1.04fr_0.96fr] lg:py-20">
-          <Reveal className="max-w-3xl" delay={80}>
-            <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--primary-border)] bg-[color:var(--primary-soft)] px-4 py-2 text-sm font-medium text-[color:var(--primary-ink)]">
-              <ShieldCheck className="h-4 w-4" />
-              WAEC, JAMB, NECO, and school-based CBT preparation
-            </div>
-
-            <h1 className="mt-6 max-w-4xl text-4xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-5xl lg:text-6xl">
-              Exam practice for Nigerian learners, with better structure for schools too.
-            </h1>
-
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
-              Prepadi gives students a simpler way to practise with timed papers, while
-              schools and tutorial centres manage examinations, assignments, and progress
-              from one clean platform.
-            </p>
-
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button
-                asChild
-                size="lg"
-                className="h-12 rounded-full px-7 text-base font-semibold shadow-[0_18px_40px_rgba(75,113,254,0.26)] hover:bg-[color:var(--primary-hover)]"
-              >
-                <Link href="/signup">
-                  Start for Free
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button
-                asChild
-                size="lg"
-                variant="outline"
-                className="h-12 rounded-full border-[color:var(--primary-border)] bg-white/85 px-7 text-base font-semibold text-slate-700 shadow-sm hover:bg-[color:var(--primary-soft)] hover:text-[color:var(--primary-ink)]"
-              >
-                <Link href="/login">I already have an account</Link>
-              </Button>
-            </div>
-
-            <div className="mt-10 grid gap-3 text-sm text-slate-600 sm:grid-cols-3">
-              {heroHighlights.map((item, index) => (
-                <Reveal
-                  key={item.label}
-                  delay={180 + index * 90}
-                  y={16}
-                  className="rounded-2xl border border-white/60 bg-white/72 px-4 py-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)] backdrop-blur"
+            <div className="flex shrink-0 items-center gap-1 sm:gap-3">
+              {authStatus === 'loading' ? (
+                <div aria-label="Checking sign-in status" className="h-9 w-20 animate-pulse rounded-xl bg-slate-100 sm:w-28" />
+              ) : session?.user ? (
+                <button
+                  onClick={() => signOut({ callbackUrl: '/' })}
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2.5 text-xs font-semibold text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 sm:px-4 sm:text-sm"
                 >
-                  <div className="mb-3 flex items-center gap-2 text-[color:var(--primary-ink)]">
-                    <item.icon className="h-4 w-4" />
-                    <span className="font-medium text-slate-900">{item.label}</span>
-                  </div>
-                  <p className="text-base font-semibold text-slate-950">{item.value}</p>
-                  <p className="mt-2 leading-6">{item.note}</p>
-                </Reveal>
-              ))}
+                  <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  Log out
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => window.location.assign('/login')}
+                    className="px-2 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 sm:px-3 sm:text-sm"
+                  >
+                    Login
+                  </button>
+                  <button
+                    onClick={() => window.location.assign('/signup')}
+                    className="flex items-center gap-1 rounded-xl bg-[#0000FE] px-2.5 py-2.5 text-xs font-semibold text-white shadow-sm shadow-[#0000FE]/20 transition-all hover:bg-[#0000CC] sm:gap-1.5 sm:px-4 sm:text-sm"
+                  >
+                    <span className="sm:hidden">Start</span>
+                    <span className="hidden sm:inline">Get Started</span>
+                    <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  </button>
+                </>
+              )}
             </div>
-          </Reveal>
-
-          <Reveal className="relative" delay={160}>
-            <div className="animate-float-soft absolute inset-x-8 top-10 -z-10 h-72 rounded-full bg-[radial-gradient(circle,_rgba(75,113,254,0.18),_transparent_72%)] blur-2xl" />
-
-            <div className="surface-glass shadow-brand-xl rounded-[2rem] border border-white/70 p-5 sm:p-6">
-              <div className="rounded-[1.5rem] border border-[color:var(--primary-border)] bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(235,241,255,0.92))] p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-[color:var(--primary-ink)]">Today&apos;s practice</p>
-                    <h2 className="mt-1 text-2xl font-semibold text-slate-950">JAMB Physics 2013</h2>
-                  </div>
-                  <div className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_14px_30px_rgba(75,113,254,0.24)]">
-                    82%
-                  </div>
-                </div>
-
-                <div className="mt-6 space-y-4">
-                  <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100 transition-transform duration-300 hover:-translate-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium text-slate-900">Timed CBT session</span>
-                      <span className="text-muted-foreground">45 mins</span>
-                    </div>
-                    <div className="mt-3 h-2.5 rounded-full bg-[color:var(--primary-soft)]">
-                      <div className="h-2.5 w-[76%] rounded-full bg-primary" />
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                      Familiar question flow, clearer timing, and a steadier practice experience.
-                    </p>
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-2xl bg-slate-950 p-4 text-white shadow-[0_24px_45px_rgba(15,23,42,0.18)] transition-transform duration-300 hover:-translate-y-1">
-                      <div className="flex items-center gap-2 text-sm text-blue-100">
-                        <CheckCircle2 className="h-4 w-4" />
-                        Performance view
-                      </div>
-                      <p className="mt-4 text-2xl font-semibold">Stronger review</p>
-                      <p className="mt-2 text-sm leading-6 text-slate-300">
-                        Students and schools can quickly see results, patterns, and areas to improve.
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-[color:var(--primary-border)] bg-white p-4 shadow-sm transition-transform duration-300 hover:-translate-y-1">
-                      <div className="flex items-center gap-2 text-sm text-[color:var(--primary-ink)]">
-                        <Wifi className="h-4 w-4" />
-                        Low-data ready
-                      </div>
-                      <p className="mt-4 text-2xl font-semibold text-slate-950">Offline support</p>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">
-                        Learners can keep moving even when the internet is inconsistent.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Reveal>
-        </div>
-
-        <div className="mt-2 grid gap-4 lg:grid-cols-3">
-          {uspCards.map((item, index) => (
-            <Reveal
-              key={item.title}
-              delay={220 + index * 110}
-              y={20}
-              className="group relative overflow-hidden rounded-[1.75rem] border border-[color:var(--primary-border)] bg-white/82 p-6 shadow-[0_18px_40px_rgba(15,23,42,0.05)] backdrop-blur transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_24px_54px_rgba(31,73,221,0.13)]"
-            >
-              <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[radial-gradient(circle,_rgba(75,113,254,0.14),_transparent_70%)] opacity-80 transition-transform duration-500 group-hover:scale-125" />
-              <div className="relative z-10">
-                <div className="mb-4 inline-flex rounded-2xl bg-[color:var(--primary-soft)] p-3 text-[color:var(--primary-ink)] shadow-sm">
-                  <item.icon className="h-5 w-5" />
-                </div>
-                <h3 className="text-xl font-semibold tracking-tight text-slate-950">{item.title}</h3>
-                <p className="mt-3 max-w-md text-sm leading-7 text-slate-600">{item.description}</p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </section>
-
-      <section className="border-y border-white/60 bg-white/70 py-16 backdrop-blur">
-        <div className="mx-auto grid max-w-7xl gap-10 px-5 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:px-10">
-          <Reveal className="max-w-xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[color:var(--primary-ink)]">
-              How it fits
-            </p>
-            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-              One platform for practice, assignments, and exam operations.
-            </h2>
-            <p className="mt-5 text-base leading-8 text-slate-600">
-              Prepadi is built to stay simple on the surface while supporting the workflows
-              that matter underneath: curated paper publishing, structured student practice,
-              organization assignments, and easier progress tracking.
-            </p>
-          </Reveal>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            {featureList.map((feature, index) => (
-              <Reveal
-                key={feature}
-                delay={120 + index * 90}
-                y={16}
-                className="rounded-3xl border border-[color:var(--primary-border)] bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(241,245,255,0.9))] p-5 shadow-[0_18px_34px_rgba(15,23,42,0.05)] transition-transform duration-300 hover:-translate-y-1"
-              >
-                <CheckCircle2 className="h-5 w-5 text-[color:var(--primary-ink)]" />
-                <p className="mt-4 text-base font-medium leading-7 text-slate-800">{feature}</p>
-              </Reveal>
-            ))}
           </div>
-        </div>
-      </section>
+        </header>
 
-      <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:px-10 lg:py-20">
-        <Reveal>
-          <div className="relative overflow-hidden rounded-[2rem] border border-[color:var(--primary-border)] bg-slate-950 px-6 py-10 text-white shadow-[0_32px_80px_rgba(15,23,42,0.24)] sm:px-8 lg:flex lg:items-center lg:justify-between lg:px-12">
-            <div className="absolute -right-10 top-0 h-40 w-40 rounded-full bg-[radial-gradient(circle,_rgba(75,113,254,0.4),_transparent_70%)] blur-2xl" />
-            <div className="relative max-w-2xl">
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-blue-200">Start now</p>
-              <h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-                Give students a cleaner way to prepare.
-              </h2>
-              <p className="mt-4 text-base leading-8 text-slate-300">
-                Whether you are practising on your own or running assessments for a school,
-                Prepadi helps you keep exam preparation structured, calm, and easier to manage.
+        {/* Hero Section: copy left, classroom image right */}
+        <section className="mx-auto max-w-7xl px-4 pt-8 pb-12 sm:px-6 sm:pt-12 sm:pb-16 lg:px-8">
+          <div className="grid grid-cols-1 items-center gap-7 sm:gap-10 lg:grid-cols-12 lg:gap-16">
+            {/* Left Column: Streamlined Copy (Cut by ~60%) */}
+            <div className="lg:col-span-6 space-y-6">
+              <h1 className="text-4xl sm:text-5xl lg:text-[56px] font-extrabold text-slate-900 tracking-tight leading-[1.08]">
+                {heroMode === 'student' ? (
+                  <>
+                    Ace the exam.{' '}
+                    <span className="bg-gradient-to-r from-[#0000FE] to-[#FF6600] bg-clip-text text-transparent">
+                      Skip the panic.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Run school mocks.{' '}
+                    <span className="bg-gradient-to-r from-[#0000FE] to-[#FF6600] bg-clip-text text-transparent">
+                      Skip the grading.
+                    </span>
+                  </>
+                )}
+              </h1>
+
+              <p className="text-lg text-slate-600 leading-relaxed max-w-xl">
+                Real JAMB &amp; WAEC timed practice for students. One-click CBT exams for Nigerian schools—online or offline.
               </p>
+
+              {/* Primary CTAs */}
+              <div className="flex flex-wrap items-center gap-3.5 pt-1">
+                <button
+                  onClick={() => window.location.assign('/signup')}
+                  className="bg-[#0000FE] hover:bg-[#0000CC] text-white font-semibold px-6 py-3.5 rounded-xl shadow-md shadow-[#0000FE]/20 transition-all flex items-center gap-2"
+                >
+                  <span>
+                    {heroMode === 'student'
+                      ? 'Start Practising for Free'
+                      : 'Set Up Your School Workspace'}
+                  </span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setHeroMode(heroMode === 'student' ? 'school' : 'student')}
+                  className="bg-white hover:bg-slate-50 text-slate-700 font-semibold px-5 py-3.5 rounded-xl border border-slate-200 shadow-2xs transition-all flex items-center gap-2"
+                >
+                  <Building2 className="w-4 h-4 text-[#0000FE]" />
+                  <span>
+                    {heroMode === 'student' ? 'Preview School Mode' : 'Preview Student CBT'}
+                  </span>
+                </button>
+              </div>
+
+              {/* Editorial Proof Strip (V3 messaging) */}
+              <div className="pt-4 grid grid-cols-3 gap-4 border-t border-slate-200/80">
+                <div>
+                  <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">45k+</div>
+                  <div className="text-xs font-semibold text-slate-500">
+                    Seeded Past Questions
+                  </div>
+                </div>
+                <div>
+                  <div className="text-2xl sm:text-3xl font-extrabold text-[#0000FE]">100%</div>
+                  <div className="text-xs font-semibold text-slate-500">Offline Auto-Save</div>
+                </div>
+                <div>
+                  <div className="text-2xl sm:text-3xl font-extrabold text-[#FF6600]">Instant</div>
+                  <div className="text-xs font-semibold text-slate-500">Class Broadsheets</div>
+                </div>
+              </div>
             </div>
 
-            <div className="relative mt-8 flex flex-col gap-3 sm:flex-row lg:mt-0">
-              <Button
-                asChild
-                size="lg"
-                className="h-12 rounded-full bg-white px-7 text-base font-semibold text-slate-950 hover:bg-blue-50"
-              >
-                <Link href="/signup">Create Account</Link>
-              </Button>
-              <Button
-                asChild
-                size="lg"
-                variant="outline"
-                className="h-12 rounded-full border-white/20 bg-white/10 px-7 text-base font-semibold text-white hover:bg-white/14"
-              >
-                <Link href="/login">Log In</Link>
-              </Button>
+            {/* Right Column: image base with CBT card layered on top */}
+            <div className="min-w-0 lg:col-span-6">
+              <div className="relative">
+                <img
+                  src="/01.jpeg"
+                  alt="Nigerian students practising CBT together on a laptop in a bright classroom"
+                  loading="lazy"
+                  className="w-full h-64 sm:h-[380px] lg:h-[500px] object-cover rounded-3xl border border-slate-200 shadow-lg"
+                />
+                <p className="text-[11px] text-slate-500 pt-2">
+                  Real classroom CBT practice — Prepadi works on laptops and phones.
+                </p>
+              </div>
             </div>
           </div>
-        </Reveal>
+        </section>
+      </div>
+
+      {/* Consolidated Asymmetric Bento Grid */}
+      <section id="v1-bento" className="border-y border-slate-200/80 bg-white py-14 sm:py-20 md:py-32">
+        <div className="mx-auto max-w-7xl space-y-10 px-4 sm:space-y-12 sm:px-6 lg:space-y-16 lg:px-8">
+          <div className="max-w-2xl space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#0000FE]">
+              HOW PREPADI FITS
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+              Structured prep in three calm steps.
+            </h2>
+            <p className="text-slate-600 text-base">
+              No cluttered menus or unverified questions. Everything flows from curated papers to instant mastery.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-5 sm:gap-8 lg:grid-cols-12 lg:gap-10">
+            {/* Bento 1 (7 Cols): Timed CBT Practice */}
+            <div className="flex flex-col justify-between gap-5 rounded-3xl border border-slate-200/90 bg-slate-50 p-5 sm:p-7 lg:col-span-7">
+              <div className="space-y-2">
+                <div className="w-10 h-10 rounded-xl bg-[#0000FE] text-white flex items-center justify-center">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 pt-1">
+                  Practice Under Real Timing
+                </h3>
+                <p className="text-sm text-slate-600 max-w-lg">
+                Students practise with real exam timers, question palettes, and authentic JAMB 8-key navigation so exam day feels effortless.
+                </p>
+              </div>
+
+              <div className="flex flex-1 flex-col justify-center gap-3 rounded-2xl border border-blue-100 bg-white p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-700">
+                  <span>Question navigator</span>
+                  <span className="rounded-full bg-[#EEF2FF] px-2.5 py-1 tabular-nums text-[#0000CC]">14 / 40</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+                  <div className="h-full w-[35%] rounded-full bg-[#0000FE]" />
+                </div>
+                <div className="grid grid-cols-4 gap-2 min-[400px]:grid-cols-8" aria-label="Question progress preview">
+                  {Array.from({ length: 8 }, (_, index) => {
+                    const number = index + 11;
+                    const current = number === 14;
+                    const answered = number < 14;
+                    return (
+                      <span
+                        key={number}
+                        className={`flex h-9 items-center justify-center rounded-xl border text-xs font-semibold tabular-nums ${
+                          current
+                            ? 'border-[#0000FE] bg-[#0000FE] text-white shadow-sm'
+                            : answered
+                              ? 'border-[#DCE4FF] bg-[#EEF2FF] text-[#172B8A]'
+                              : 'border-slate-200 bg-white text-slate-600'
+                        }`}
+                      >
+                        {number}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-medium text-slate-500">
+                  <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#0000FE]" />Current</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#C7D4FF]" />Answered</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full border border-slate-300 bg-white" />To do</span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:p-4">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2" aria-label="Keyboard shortcuts: A to D answer, N next, P previous, S submit, Enter next">
+                  {['A', 'B', 'C', 'D', 'N', 'P', 'S', 'ENTER'].map((k) => (
+                    <span
+                      key={k}
+                      className={`flex h-7 ${k === 'ENTER' ? 'w-10' : 'w-7'} items-center justify-center rounded-lg border border-slate-300 bg-slate-100 font-mono text-[10px] font-bold text-slate-700 sm:h-8 ${k === 'ENTER' ? 'sm:w-12' : 'sm:w-8'} sm:text-xs`}
+                    >
+                      {k === 'ENTER' ? '↵' : k}
+                    </span>
+                  ))}
+                </div>
+                <span className="text-[11px] font-semibold leading-snug text-[#0000FE] sm:text-xs">
+                  Keyboard Shortcuts Built-In
+                </span>
+              </div>
+            </div>
+
+            {/* Bento 2 (5 Cols): Interactive CBT Preview */}
+            <div id="v1-simulator" className="min-w-0 rounded-3xl bg-slate-900 p-4 text-white sm:p-6 lg:col-span-5">
+              <div className="mb-4 space-y-1.5 sm:mb-5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#FF6600]/30 bg-[#0000FE]/20 text-[#FF6600]">
+                  <MonitorPlay className="h-4 w-4" />
+                </div>
+                <h3 className="pt-1 text-lg font-bold sm:text-xl">Try the CBT experience</h3>
+                <p className="text-xs leading-5 text-slate-300 sm:text-sm">
+                  Preview a question, choose an answer, and see how Prepadi works.
+                </p>
+              </div>
+
+              <div className="min-w-0 space-y-3 rounded-2xl border border-slate-200/90 bg-white p-3 text-slate-900 shadow-xl shadow-slate-950/20 sm:space-y-4 sm:p-4">
+                <div className="flex flex-col gap-2 border-b border-slate-100 pb-3 min-[400px]:flex-row min-[400px]:items-center min-[400px]:justify-between">
+                  <div className="inline-flex w-fit max-w-full items-center rounded-xl bg-slate-100 p-1 text-[10px] font-semibold sm:text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setHeroMode('student')}
+                      aria-pressed={heroMode === 'student'}
+                      className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 transition sm:px-2.5 ${heroMode === 'student' ? 'bg-white text-[#0000FE] shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                      <GraduationCap className="h-3.5 w-3.5 shrink-0" /> Student
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHeroMode('school')}
+                      aria-pressed={heroMode === 'school'}
+                      className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 transition sm:px-2.5 ${heroMode === 'school' ? 'bg-white text-[#0000FE] shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                      <Building2 className="h-3.5 w-3.5 shrink-0" /> School
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsOfflineSim(!isOfflineSim)}
+                    aria-pressed={isOfflineSim}
+                    className={`inline-flex w-fit max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[10px] font-semibold transition sm:text-[11px] ${isOfflineSim ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-[#0000FE]/30 bg-[#0000FE]/5 text-[#0000CC]'}`}
+                  >
+                    {isOfflineSim ? <WifiOff className="h-3.5 w-3.5 shrink-0" /> : <Wifi className="h-3.5 w-3.5 shrink-0" />}
+                    <span className="truncate">{isOfflineSim ? 'Offline · saved locally' : 'Low-data sync active'}</span>
+                  </button>
+                </div>
+
+                {heroMode === 'student' ? (
+                  <div className="min-w-0 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex min-w-0 flex-wrap gap-1.5">
+                        {EXAM_CARDS.slice(0, 2).map((card, index) => (
+                          <button
+                            key={card.id}
+                            type="button"
+                            onClick={() => setQuestionIdx(index)}
+                            className={`rounded-lg px-2 py-1.5 text-[10px] font-bold leading-tight transition sm:text-[11px] ${questionIdx === index ? 'bg-[#0000FE] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                          >
+                            {card.tabLabel}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 px-2 py-1.5 font-mono text-[10px] font-bold text-slate-700 sm:text-xs">
+                        <Clock className="h-3.5 w-3.5 text-[#0000FE]" /> {formatClock(timeLeft)}
+                      </div>
+                    </div>
+
+                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                      <div className="h-full w-3/4 rounded-full bg-[#0000FE]" />
+                    </div>
+
+                    <div className="min-w-0 space-y-2.5 rounded-xl border border-slate-200 bg-slate-50/80 p-3 sm:p-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] font-semibold text-[#0000FE] sm:text-[11px]">
+                        <span className="min-w-0 break-words">{activeQ.badge} · {activeQ.topic}</span>
+                        <span className="shrink-0">{activeQ.questionNumber}</span>
+                      </div>
+                      <p className="break-words text-xs font-semibold leading-relaxed text-slate-900 sm:text-sm">{activeQ.question}</p>
+
+                      <div className="grid grid-cols-1 gap-1.5 min-[420px]:grid-cols-2 sm:gap-2">
+                        {activeQ.options.map((option) => {
+                          const picked = userPick === option.id;
+                          const isCorrect = option.id === activeQ.correct;
+                          const optionStyle = !userPick
+                            ? 'border-slate-200 bg-white text-slate-800 hover:border-[#FF6600]'
+                            : picked && isCorrect
+                              ? 'border-[#0000FE] bg-[#0000FE]/10 text-[#0000FE]'
+                              : picked
+                                ? 'border-rose-400 bg-rose-50 text-rose-900'
+                                : isCorrect
+                                  ? 'border-[#FF6600] bg-[#0000FE]/10 text-[#0000FE]'
+                                  : 'border-slate-200 bg-white text-slate-700';
+
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => setSelectedAns((previous) => ({ ...previous, [questionIdx]: option.id }))}
+                              aria-pressed={picked}
+                              className={`flex min-w-0 items-center gap-2 rounded-xl border p-2 text-left text-[11px] font-semibold leading-snug transition sm:p-2.5 sm:text-xs ${optionStyle}`}
+                            >
+                              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[10px] font-bold ${picked ? 'bg-[#0000FE] text-white' : 'bg-slate-100 text-slate-600'}`}>{option.id}</span>
+                              <span className="min-w-0 flex-1 break-words">{option.text}</span>
+                              {userPick && isCorrect && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#0000FE]" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {userPick && (
+                        <div className="rounded-lg border border-[#0000FE]/20 bg-[#0000FE]/10 p-2 text-[10px] leading-relaxed text-[#000066] sm:text-[11px]">
+                          <strong className="text-[#0000CC]">Instant Review:</strong> {activeQ.explanation}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex flex-col gap-2 rounded-xl border border-[#0000FE]/20 bg-[#0000FE]/10 p-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between sm:p-4">
+                      <div className="min-w-0">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-[#0000FE]">School assessment hub</span>
+                        <h4 className="mt-1 break-words text-sm font-bold text-slate-900">SS3 Mock UTME — Physics &amp; Chemistry</h4>
+                      </div>
+                      <span className="w-fit shrink-0 rounded-full bg-[#0000FE] px-2.5 py-1 text-[10px] font-bold text-white">82% Class Avg</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {[
+                        { student: 'Chidera Nwosu (SS3A)', status: 'Submitted', score: '88%' },
+                        { student: 'Femi Adeyemi (SS3A)', status: 'Submitted', score: '84%' },
+                        { student: 'Zainab Bello (SS3B)', status: 'Offline Synced', score: '79%' },
+                      ].map((item) => (
+                        <div key={item.student} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-[10px] sm:text-[11px]">
+                          <div className="min-w-0">
+                            <div className="truncate font-bold text-slate-900">{item.student}</div>
+                            <div className="text-slate-500">{item.status}</div>
+                          </div>
+                          <span className="shrink-0 rounded-lg bg-[#0000FE]/10 px-2 py-1 font-mono text-xs font-bold text-[#0000FE]">{item.score}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Bento 3 (5 Cols): Offline-First Resilience */}
+            <div className="lg:col-span-5 bg-slate-50 border border-slate-200/90 rounded-3xl p-7 flex flex-col justify-between space-y-6">
+              <div className="space-y-2">
+                <div className="w-10 h-10 rounded-xl bg-[#0000FE] text-white flex items-center justify-center">
+                  <Wifi className="w-5 h-5" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 pt-1">
+                  Offline-Ready Support
+                </h3>
+                <p className="text-sm text-slate-600">
+                  Built for Nigerian connectivity. Papers cache locally so students never lose progress during fluctuating network moments.
+                </p>
+              </div>
+
+              <img
+                src="/04.jpg"
+                alt="Student holding low-battery phone in classroom showing offline study need"
+                loading="lazy"
+                className="w-full h-52 object-cover rounded-2xl border border-slate-200"
+              />
+
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-slate-900">
+                    {bentoOfflineTest ? 'Network Disconnected' : 'Connection Active'}
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    {bentoOfflineTest
+                      ? 'Auto-saving answers to browser vault'
+                      : 'Click button to test offline resilience'}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setBentoOfflineTest(!bentoOfflineTest)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    bentoOfflineTest
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {bentoOfflineTest ? 'Restore Network' : 'Test Network Drop'}
+                </button>
+              </div>
+            </div>
+
+            {/* Bento 4 (7 Cols): School Operations & Analytics */}
+            <div
+              id="v1-workflow"
+              className="lg:col-span-7 bg-[#0000FE] text-white rounded-3xl p-7 flex flex-col justify-between space-y-6"
+            >
+              <div className="space-y-2">
+                <div className="w-10 h-10 rounded-xl bg-white/15 text-white flex items-center justify-center">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <h3 className="text-xl font-bold pt-1">
+                  Built for Schools &amp; Tutorial Centres
+                </h3>
+                <p className="text-sm text-white/80 max-w-lg">
+                  Assign seeded past papers or custom school assessments. Students join with a 6-digit code and results export to Excel/PDF.
+                </p>
+              </div>
+
+              <img
+                src="/05.jpg"
+                alt="Nigerian teacher reviewing broadsheet results with students behind"
+                loading="lazy"
+                className="w-full h-56 object-cover rounded-2xl border border-white/20"
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { topic: 'Mechanics', pct: '86%', status: 'Strong' },
+                  { topic: 'Organic Chem', pct: '74%', status: 'On Track' },
+                  { topic: 'Electromagnetism', pct: '48%', status: 'Needs Review' }
+                ].map((stat) => (
+                  <div
+                    key={stat.topic}
+                    className="bg-white/10 backdrop-blur-xs border border-white/15 rounded-2xl p-3.5"
+                  >
+                    <div className="text-xs text-white/80">{stat.topic}</div>
+                    <div className="text-xl font-extrabold mt-0.5">{stat.pct}</div>
+                    <div className="text-[11px] text-white/70 mt-0.5">{stat.status}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
+
+      {/* V1 Pricing — V3 naira plans in brand style */}
+      <section id="v1-pricing" className="py-24 md:py-32 bg-white border-b border-slate-200/80">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10 md:space-y-12">
+          <div className="max-w-2xl space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#0000FE]">
+              SIMPLE NAIRA PRICING
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+              Start free. Scale when ready.
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+            <div className="bg-slate-50 border border-slate-200/90 rounded-3xl p-7 flex flex-col justify-between space-y-6">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-3 py-1 rounded-full bg-white border border-slate-200">
+                    FOR INDIVIDUAL LEARNERS
+                  </span>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#0000FE]">
+                    FREE TO START
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 pt-1">
+                  <span className="text-4xl sm:text-5xl font-extrabold text-slate-900">₦0</span>
+                  <span className="text-xs font-semibold text-slate-500">
+                    / daily seeded papers (₦1,500/mo Unlimited)
+                  </span>
+                </div>
+                <p className="text-sm text-slate-600">
+                  Everything a candidate needs to practise WAEC, JAMB &amp; NECO papers calmly.
+                </p>
+                <ul className="space-y-2.5 pt-2 text-sm font-medium text-slate-700">
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-[#0000FE] shrink-0" />
+                    <span>Timed CBT simulator with 8-key JAMB shortcuts</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-[#0000FE] shrink-0" />
+                    <span>Instant step-by-step explanations &amp; topic breakdown</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-[#0000FE] shrink-0" />
+                    <span>Low-data offline mode for uninterrupted practice</span>
+                  </li>
+                </ul>
+              </div>
+
+              <button
+                onClick={() => window.location.assign('/signup')}
+                className="w-full bg-[#0000FE] hover:bg-[#0000CC] text-white font-bold text-sm py-3.5 rounded-xl shadow-sm transition-all"
+              >
+                Create Free Student Account →
+              </button>
+            </div>
+
+            <div className="bg-slate-900 text-white rounded-3xl p-7 flex flex-col justify-between space-y-6">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-[#FF6600] text-white">
+                    FOR SCHOOLS &amp; TUTORIALS
+                  </span>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#FF6600]">
+                    14-DAY FREE TRIAL
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 pt-1">
+                  <span className="text-4xl sm:text-5xl font-extrabold">₦25,000</span>
+                  <span className="text-xs font-semibold text-slate-400">
+                    / term per school workspace
+                  </span>
+                </div>
+                <p className="text-sm text-slate-300">
+                  Run unlimited internal mocks, class assignments, and CBT drills across JSS1–SS3.
+                </p>
+                <ul className="space-y-2.5 pt-2 text-sm font-medium text-slate-200">
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-[#FF6600] shrink-0" />
+                    <span>Assign seeded WAEC/JAMB papers or custom teacher exams</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-[#FF6600] shrink-0" />
+                    <span>Instant class broadsheets (PDF/CSV) &amp; weak-topic alerts</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-[#FF6600] shrink-0" />
+                    <span>Works in school computer labs even when internet drops</span>
+                  </li>
+                </ul>
+              </div>
+
+              <button
+                onClick={() => window.location.assign('/signup')}
+                className="w-full bg-[#FF6600] hover:brightness-95 text-white font-bold text-sm py-3.5 rounded-xl shadow-sm transition-all"
+              >
+                Launch School Workspace →
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Dark CTA Banner matching original screenshot's bottom card but sharper */}
+      <section className="py-24 md:py-32 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="bg-[#090D16] text-white rounded-3xl overflow-hidden shadow-2xl grid grid-cols-1 md:grid-cols-2">
+          <div className="p-8 sm:p-12 flex flex-col justify-center space-y-2">
+            <span className="text-xs font-bold uppercase tracking-widest text-[#FF6600]">
+              START NOW
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
+              Give students a cleaner way to prepare.
+            </h2>
+            <p className="text-slate-400 text-sm sm:text-base">
+              Whether practising solo or running assessments for a school, Prepadi keeps exam prep structured and calm.
+            </p>
+            <div className="flex flex-wrap items-center gap-3 pt-4">
+              <button
+                onClick={() => window.location.assign('/signup')}
+                className="bg-white hover:bg-slate-100 text-slate-900 font-bold text-sm px-6 py-3.5 rounded-full transition-all"
+              >
+                Create Account
+              </button>
+              <button
+                onClick={() => window.location.assign('/login')}
+                className="bg-white/10 hover:bg-white/15 border border-white/15 text-white font-bold text-sm px-6 py-3.5 rounded-full transition-all"
+              >
+                Log In
+              </button>
+            </div>
+          </div>
+          <img
+            src="/06.jpg"
+            alt="Nigerian students celebrating exam success outside school"
+            loading="lazy"
+            className="w-full h-72 md:h-full object-cover -scale-x-100"
+          />
+        </div>
+      </section>
+
+    </div>
+  );
+}
+
+// ============================================================================
+// MASTER APPLICATION — CLEAN LANDING (EXPLORER BAR REMOVED)
+// ============================================================================
+export default function App() {
+  return (
+    <div className="min-h-screen relative">
+      {/* Global Typography & Tactile Helper Styles */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,600&family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+        .font-serif-editorial {
+          font-family: 'Fraunces', Georgia, serif;
+        }
+        .font-sans {
+          font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        .font-mono-code {
+          font-family: 'JetBrains Mono', monospace;
+        }
+        .tactile-shadow {
+          box-shadow: 4px 4px 0px #14281D;
+        }
+        .tactile-shadow-lg {
+          box-shadow: 6px 6px 0px #14281D;
+        }
+        .tactile-shadow-sm {
+          box-shadow: 2px 2px 0px #14281D;
+        }
+        .tactile-btn {
+          border: 2px solid #14281D;
+          box-shadow: 4px 4px 0px #14281D;
+          transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.15s ease;
+        }
+        .tactile-btn:hover {
+          transform: translate(-1px, -1px);
+          box-shadow: 5px 5px 0px #14281D;
+        }
+        .tactile-btn:active {
+          transform: translate(3px, 3px);
+          box-shadow: 1px 1px 0px #14281D;
+        }
+        .paper-dot-bg {
+          background-image: radial-gradient(#14281D 0.75px, transparent 0.75px);
+          background-size: 24px 24px;
+        }
+      `}</style>
+
+      <VersionOneSaaSBento />
     </div>
   );
 }

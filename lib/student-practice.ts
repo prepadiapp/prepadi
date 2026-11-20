@@ -152,7 +152,7 @@ export async function getAccessiblePracticePapers(
       examination: true,
       questions: {
         include: { options: true, section: true, tags: true },
-        orderBy: { order: 'asc' },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       },
     },
     orderBy: [{ updatedAt: 'desc' }],
@@ -181,7 +181,7 @@ export async function getAccessiblePracticePapers(
         examination: true,
         questions: {
           include: { options: true, section: true, tags: true },
-          orderBy: { order: 'asc' },
+          orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         },
       },
       orderBy: [{ updatedAt: 'desc' }],

@@ -66,7 +66,7 @@ async function getQuizData(slug: string[] | undefined, searchParams: { tags?: st
                 examination: true,
                 questions: {
                     include: { options: true, section: true },
-                    orderBy: { order: 'asc' }
+                    orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }]
                 }
             }
         });

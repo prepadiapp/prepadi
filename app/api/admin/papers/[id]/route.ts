@@ -70,7 +70,7 @@ export async function GET(
               orderBy: { createdAt: 'desc' },
             },
           },
-          orderBy: { order: 'asc' },
+          orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         },
       },
     });

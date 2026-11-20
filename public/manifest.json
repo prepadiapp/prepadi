@@ -5,7 +5,7 @@
   "start_url": "/dashboard?source=pwa",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#4B71FE",
+  "background_color": "#FFFFFF",
   "theme_color": "#4B71FE",
   "orientation": "portrait-primary",
   "icons": [

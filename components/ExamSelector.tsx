@@ -5,7 +5,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ChevronRight, Clock, Zap, Download, Loader2, FileText, CalendarDays, Sparkles, Tags } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Clock, Zap, Download, Loader2, FileText, CalendarDays, Sparkles, Tags } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { saveExamForOffline } from '@/lib/offline-storage';
@@ -25,9 +25,13 @@ interface ExamSelectorProps {
 function ExamSelectorContent({ exams }: ExamSelectorProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const requestedMode = searchParams.get('mode')?.toLowerCase();
   
   const [isPracticeMode, setIsPracticeMode] = useState(
-    searchParams.get('mode') === 'exam' ? false : true
+    requestedMode !== 'exam'
+  );
+  const [hasChosenMode, setHasChosenMode] = useState(
+    requestedMode === 'exam' || requestedMode === 'practice'
   );
 
   const [selectedExam, setSelectedExam] = useState<ExamSelectorProps['exams'][number] | null>(null);
@@ -271,12 +275,60 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
         : 'Select Subject';
   const topicPracticeAvailable = !!selectedSubject && topicOptions.length > 0;
 
+  if (!hasChosenMode) {
+    return (
+      <Card className="w-full overflow-hidden border-blue-100 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
+        <div className="h-1 bg-gradient-to-r from-blue-700 via-cyan-500 to-emerald-400" />
+        <CardHeader className="pb-5 text-center sm:pb-7">
+          <CardTitle className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">How would you like to study?</CardTitle>
+          <CardDescription className="mx-auto max-w-lg text-sm leading-6">
+            Choose a relaxed practice session or simulate real exam conditions. You’ll pick your exam and subject next.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 pb-6 sm:grid-cols-2 sm:gap-5 sm:pb-8">
+          <button
+            type="button"
+            onClick={() => { setIsPracticeMode(true); setHasChosenMode(true); }}
+            className="group rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 sm:p-6"
+          >
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-100 text-orange-700 transition group-hover:bg-orange-200">
+              <Zap className="h-6 w-6" />
+            </span>
+            <span className="mt-4 block text-lg font-bold text-slate-900">Just practice</span>
+            <span className="mt-1 block text-sm leading-6 text-slate-600">Work through questions at your own pace.</span>
+            <span className="mt-5 inline-flex items-center text-sm font-semibold text-orange-800">Choose Practice <ChevronRight className="ml-1 h-4 w-4 transition group-hover:translate-x-0.5" /></span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setIsPracticeMode(false); setHasChosenMode(true); }}
+            className="group rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:p-6"
+          >
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-700 transition group-hover:bg-blue-200">
+              <Clock className="h-6 w-6" />
+            </span>
+            <span className="mt-4 block text-lg font-bold text-slate-900">Exam Simulator</span>
+            <span className="mt-1 block text-sm leading-6 text-slate-600">Take a timed paper under exam-like conditions and submit when you’re done.</span>
+            <span className="mt-5 inline-flex items-center text-sm font-semibold text-blue-800">Choose Exam Simulator <ChevronRight className="ml-1 h-4 w-4 transition group-hover:translate-x-0.5" /></span>
+          </button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="w-full overflow-hidden border-blue-100 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
       <div className="h-1 bg-gradient-to-r from-blue-700 via-cyan-500 to-emerald-400" />
       <CardHeader className="pb-4">
-         <CardTitle className="text-xl font-bold text-slate-900">Configure your session</CardTitle>
-         <CardDescription>Choose only from published papers curated for your access level.</CardDescription>
+         <div className="flex items-start gap-3">
+           <Button type="button" variant="outline" size="icon" className="mt-0.5 h-9 w-9 shrink-0 rounded-xl" onClick={() => setHasChosenMode(false)} aria-label="Choose a different session type">
+             <ArrowLeft className="h-4 w-4" />
+           </Button>
+           <div>
+             <CardTitle className="text-xl font-bold text-slate-900">Configure your {isPracticeMode ? 'practice' : 'exam simulator'} session</CardTitle>
+             <CardDescription className="mt-1">Choose only from published papers curated for your access level.</CardDescription>
+           </div>
+         </div>
       </CardHeader>
       <CardContent className="space-y-6">
         
@@ -318,7 +370,7 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
             </div>
         </div>
 
-        {/* Row 2: Year/Paper & Mode */}
+        {/* Row 2: Paper selection and chosen session type */}
             <div className="grid md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
               {isYearBased ? (
                 <div className="space-y-2">
@@ -359,26 +411,12 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
                 </div>
               )}
                 
-                <div className="space-y-2">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        4. Mode
-                    </label>
-                    <div className="flex gap-2">
-                        <Button 
-                            variant={isPracticeMode ? "secondary" : "outline"} 
-                            className={cn("flex-1 h-11", isPracticeMode && "bg-orange-100 text-orange-800 hover:bg-orange-200 border-orange-200")}
-                            onClick={() => setIsPracticeMode(true)}
-                        >
-                            <Zap className="w-4 h-4 mr-2" /> Practice
-                        </Button>
-                        <Button 
-                            variant={!isPracticeMode ? "default" : "outline"} 
-                            className={cn("flex-1 h-11", !isPracticeMode && "bg-blue-600 hover:bg-blue-700")}
-                            onClick={() => setIsPracticeMode(false)}
-                        >
-                            <Clock className="w-4 h-4 mr-2" /> Exam
-                        </Button>
-                    </div>
+                <div className={cn(
+                  'flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold',
+                  isPracticeMode ? 'border-orange-200 bg-orange-50 text-orange-900' : 'border-blue-200 bg-blue-50 text-blue-900'
+                )}>
+                  {isPracticeMode ? <Zap className="h-4 w-4 shrink-0" /> : <Clock className="h-4 w-4 shrink-0" />}
+                  <span>{isPracticeMode ? 'Practice session · no timer' : 'Exam Simulator · timed session'}</span>
                 </div>
             </div>
 

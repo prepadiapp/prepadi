@@ -48,7 +48,7 @@ async function copyQuestionsToRevision(sourcePaperId: string, targetPaperId: str
   const sourceQuestions = await prisma.question.findMany({
     where: { paperId: sourcePaperId },
     include: { options: true, tags: true },
-    orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
   });
 
   for (const question of sourceQuestions) {
@@ -93,7 +93,7 @@ async function upsertRevisionUploadQuestions(args: {
   const existingQuestions = await prisma.question.findMany({
     where: { paperId: args.paperId },
     include: { options: true, tags: true },
-    orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
   });
 
   const existingByText = new Map<string, typeof existingQuestions[number]>();
