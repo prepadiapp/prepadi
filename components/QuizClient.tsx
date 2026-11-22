@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useQuizStore, SanitizedQuestion, QuizMode } from '@/stores/quizStore';
 import { useTimer } from 'react-timer-hook';
 import { Button } from '@/components/ui/button';
@@ -98,6 +98,33 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
   const [reportComment, setReportComment] = useState('');
   const [isReporting, setIsReporting] = useState(false);
   const [reportedQuestionIds, setReportedQuestionIds] = useState<string[]>([]);
+
+  // Inner scroll region for the question content. Reset to top on every
+  // question change so a new question never loads at the old scroll offset.
+  // `showScrollHint` signals overflow so users can discover hidden content.
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollHint, setShowScrollHint] = useState(false);
+
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0 });
+  }, [currentIndex]);
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const update = () => {
+      setShowScrollHint(el.scrollHeight - el.scrollTop - el.clientHeight > 24);
+    };
+    update();
+    const raf = requestAnimationFrame(update);
+    el.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      cancelAnimationFrame(raf);
+      el.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [currentIndex]);
 
   const progressIdentity = useMemo(() => createQuizProgressIdentity({
     userId,
@@ -449,9 +476,9 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
 
   return (
     <div className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-[#F8FAFC] md:flex-row">
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-4xl flex-1 flex-col overflow-hidden p-2 sm:p-3 md:p-4">
-        <header className="mb-2 flex flex-shrink-0 flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.045)] sm:p-4 md:mb-3">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2.5">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-4xl flex-1 flex-col overflow-hidden p-2 sm:p-3">
+        <header className="mb-2 flex flex-shrink-0 flex-col gap-1.5 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.045)] sm:gap-2 sm:px-4 sm:py-2.5">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-[#DCE4FF] bg-[#F5F7FF] px-2.5 py-1 text-[10px] font-semibold text-[#0000CC] sm:text-xs">
               <BookOpen className="h-3.5 w-3.5" />
               {mode === 'PRACTICE' ? 'Practice mode' : 'Student CBT'}
@@ -524,7 +551,20 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
             </div>
           </CardHeader>
           
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white">
+          <div
+            ref={contentRef}
+            className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white"
+            style={
+              showScrollHint
+                ? {
+                    WebkitMaskImage:
+                      'linear-gradient(to bottom, black calc(100% - 3.5rem), transparent 100%)',
+                    maskImage:
+                      'linear-gradient(to bottom, black calc(100% - 3.5rem), transparent 100%)',
+                  }
+                : undefined
+            }
+          >
             <div className="space-y-3 p-3 sm:space-y-4 sm:p-5">
                 <div className={cn('grid gap-3 rounded-2xl border border-[#DDE6FF] bg-[#F5F8FF] p-3 sm:gap-4 sm:p-4', questionImages.length > 0 && 'lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.72fr)] lg:items-start')}>
                   <div className="min-w-0 space-y-2">
@@ -645,6 +685,14 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
                             </Alert>
                         )}
                     </div>
+                )}
+
+                {showScrollHint && (
+                  <div className="pointer-events-none sticky bottom-3 z-10 -mt-9 flex justify-center">
+                    <span className="inline-flex animate-bounce items-center gap-1 rounded-full bg-slate-900/85 px-3 py-1.5 text-[11px] font-semibold text-white shadow-lg backdrop-blur">
+                      Scroll for more ↓
+                    </span>
+                  </div>
                 )}
 
             </div>
