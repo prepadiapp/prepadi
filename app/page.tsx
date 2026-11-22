@@ -14,6 +14,8 @@ import {
   MonitorPlay,
   LogOut,
 } from 'lucide-react';
+import { HeroPin, ExamLogosOverlay } from '@/components/marketing/HeroScrollLock';
+import { SiteFooter } from '@/components/marketing/SiteFooter';
 
 // ============================================================================
 // SHARED CURATED NIGERIAN EXAM DATA (JAMB, WAEC, NECO)
@@ -122,7 +124,7 @@ function VersionOneSaaSBento() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-[#0000FE] selection:text-white">
       {/* Subtle Top Mesh Glow */}
-      <div className="relative overflow-hidden">
+      <div className="relative overflow-x-clip">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[420px] bg-gradient-to-tr from-[#0000FE]/15 via-[#FF6600]/10 to-[#FF6600]/10 blur-3xl rounded-full"
@@ -195,7 +197,8 @@ function VersionOneSaaSBento() {
           </div>
         </header>
 
-        {/* Hero Section: copy left, classroom image right */}
+        {/* Hero Section: copy left, classroom image right with scroll-locked exam logo reveal */}
+        <HeroPin>
         <section className="mx-auto max-w-7xl px-4 pt-8 pb-12 sm:px-6 sm:pt-12 sm:pb-16 lg:px-8">
           <div className="grid grid-cols-1 items-center gap-7 sm:gap-10 lg:grid-cols-12 lg:gap-16">
             {/* Left Column: Streamlined Copy (Cut by ~60%) */}
@@ -265,15 +268,18 @@ function VersionOneSaaSBento() {
               </div>
             </div>
 
-            {/* Right Column: image base with CBT card layered on top */}
+            {/* Right Column: image base with exam logos layered on top via scroll */}
             <div className="min-w-0 lg:col-span-6">
               <div className="relative">
-                <img
-                  src="/01.jpeg"
-                  alt="Nigerian students practising CBT together on a laptop in a bright classroom"
-                  loading="lazy"
-                  className="w-full h-64 sm:h-[380px] lg:h-[500px] object-cover rounded-3xl border border-slate-200 shadow-lg"
-                />
+                <div className="relative overflow-hidden rounded-3xl border border-slate-200 shadow-lg">
+                  <img
+                    src="/01.jpeg"
+                    alt="Nigerian students practising CBT together on a laptop in a bright classroom"
+                    loading="lazy"
+                    className="w-full h-64 sm:h-[380px] lg:h-[500px] object-cover"
+                  />
+                  <ExamLogosOverlay />
+                </div>
                 <p className="text-[11px] text-slate-500 pt-2">
                   Real classroom CBT practice — Prepadi works on laptops and phones.
                 </p>
@@ -281,6 +287,7 @@ function VersionOneSaaSBento() {
             </div>
           </div>
         </section>
+        </HeroPin>
       </div>
 
       {/* Consolidated Asymmetric Bento Grid */}
@@ -699,8 +706,8 @@ function VersionOneSaaSBento() {
         </div>
       </section>
 
-      {/* Dark CTA Banner matching original screenshot's bottom card but sharper */}
-      <section className="py-24 md:py-32 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Dark CTA Banner — hidden for now (restore by removing the `hidden` class) */}
+      <section className="hidden py-24 md:py-32 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-[#090D16] text-white rounded-3xl overflow-hidden shadow-2xl grid grid-cols-1 md:grid-cols-2">
           <div className="p-8 sm:p-12 flex flex-col justify-center space-y-2">
             <span className="text-xs font-bold uppercase tracking-widest text-[#FF6600]">
@@ -735,6 +742,9 @@ function VersionOneSaaSBento() {
           />
         </div>
       </section>
+
+      {/* Footer */}
+      <SiteFooter />
 
     </div>
   );
