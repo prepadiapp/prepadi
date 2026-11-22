@@ -509,6 +509,14 @@ model UserAnswer {
   @@index([quizAttemptId])
 }
 
+// --- 5b. SITE CONFIG (admin-editable, e.g. footer contact info) ---
+
+model SiteSetting {
+  key       String   @id // e.g. "contactPhone", "contactEmail"
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 // --- 6. ENUMS ---
 
 enum UserRole {

@@ -13,7 +13,7 @@ import {
   BarChart,
   Upload,
   CreditCard,
-  Layers,
+  Settings,
   Menu,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -60,6 +60,11 @@ const sidebarLinks = [
     title: 'Analytics',
     href: '/admin/analytics',
     icon: BarChart,
+  },
+  {
+    title: 'Settings',
+    href: '/admin/settings',
+    icon: Settings,
   },
 ];
 
