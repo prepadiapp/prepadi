@@ -477,48 +477,41 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
   return (
     <div className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-[#F8FAFC] md:flex-row">
       <div className="mx-auto flex h-full min-h-0 w-full max-w-4xl flex-1 flex-col overflow-hidden p-2 sm:p-3">
-        <header className="mb-2 flex flex-shrink-0 flex-col gap-1.5 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.045)] sm:gap-2 sm:px-4 sm:py-2.5">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#DCE4FF] bg-[#F5F7FF] px-2.5 py-1 text-[10px] font-semibold text-[#0000CC] sm:text-xs">
+        <header className="mb-2 flex flex-shrink-0 flex-col gap-1.5 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-[0_10px_28px_rgba(15,23,42,0.045)] sm:px-4">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#DCE4FF] bg-[#F5F7FF] px-2.5 py-1 text-[10px] font-semibold text-[#0000CC] sm:text-xs">
               <BookOpen className="h-3.5 w-3.5" />
               {mode === 'PRACTICE' ? 'Practice mode' : 'Student CBT'}
             </span>
-            <div className="flex items-center gap-2">
-              <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium sm:text-xs', isOffline ? 'border-amber-200 bg-amber-50 text-amber-800' : isOnline ? 'border-[#DCE4FF] bg-[#EEF2FF] text-[#0000CC]' : 'border-slate-200 bg-slate-50 text-slate-500')}>
-                <span className={cn('h-1.5 w-1.5 rounded-full', isOffline ? 'bg-amber-500' : isOnline ? 'bg-[#0000FE]' : 'bg-slate-400')} />
-                {isOffline ? 'Offline mode' : isOnline ? 'Online' : 'Connecting'}
-              </span>
-              <div className="md:hidden">
-                <Sheet>
-                    <SheetTrigger asChild>
-                        <Button variant="outline" className="h-8 gap-2 rounded-full border-slate-200 bg-white px-2.5 shadow-sm">
-                          <span className="text-[11px] font-semibold tabular-nums text-[#0000FE]">{currentIndex + 1}/{totalQuestions}</span>
-                          <Menu className="h-4 w-4" />
-                        </Button>
-                    </SheetTrigger>
-                    <SheetContent side="right" className="w-80 gap-3 bg-[#F8FAFC] p-4 sm:w-96 sm:p-5">
-                        <SheetHeader className="mb-1 text-left">
-                            <SheetTitle>Quiz Overview</SheetTitle>
-                        </SheetHeader>
-                        <NavigatorContent />
-                    </SheetContent>
-                </Sheet>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="truncate text-sm font-bold leading-tight text-slate-900 sm:text-base">{quizDetails.examName}</h1>
-              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-slate-500 sm:text-xs">
-                <span>{quizDetails.subjectName}</span><span aria-hidden="true">•</span><span>{quizDetails.year}</span>
-              </div>
-            </div>
+            <h1 className="min-w-0 flex-1 truncate text-xs font-bold leading-tight text-slate-900 sm:text-sm">
+              {quizDetails.examName}
+              <span className="font-medium text-slate-500"> • {quizDetails.subjectName} • {quizDetails.year}</span>
+            </h1>
+            <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium sm:text-xs', isOffline ? 'border-amber-200 bg-amber-50 text-amber-800' : isOnline ? 'border-[#DCE4FF] bg-[#EEF2FF] text-[#0000CC]' : 'border-slate-200 bg-slate-50 text-slate-500')}>
+              <span className={cn('h-1.5 w-1.5 rounded-full', isOffline ? 'bg-amber-500' : isOnline ? 'bg-[#0000FE]' : 'bg-slate-400')} />
+              {isOffline ? 'Offline mode' : isOnline ? 'Online' : 'Connecting'}
+            </span>
             {mode === 'EXAM' && expiryTimestamp && <QuizTimer expiryTimestamp={expiryTimestamp} onExpire={finishQuiz} />}
+            <div className="shrink-0 md:hidden">
+              <Sheet>
+                  <SheetTrigger asChild>
+                      <Button variant="outline" className="h-8 gap-2 rounded-full border-slate-200 bg-white px-2.5 shadow-sm">
+                        <span className="text-[11px] font-semibold tabular-nums text-[#0000FE]">{currentIndex + 1}/{totalQuestions}</span>
+                        <Menu className="h-4 w-4" />
+                      </Button>
+                  </SheetTrigger>
+                  <SheetContent side="right" className="w-80 gap-3 bg-[#F8FAFC] p-4 sm:w-96 sm:p-5">
+                      <SheetHeader className="mb-1 text-left">
+                          <SheetTitle>Quiz Overview</SheetTitle>
+                      </SheetHeader>
+                      <NavigatorContent />
+                  </SheetContent>
+              </Sheet>
+            </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3">
-            <Progress value={totalQuestions ? ((currentIndex + 1) / totalQuestions) * 100 : 0} className="h-1.5 flex-1 bg-slate-100 [&>div]:bg-[#0000FE]" aria-label="Question progress" />
+          <div className="flex items-center gap-2">
+            <Progress value={totalQuestions ? ((currentIndex + 1) / totalQuestions) * 100 : 0} className="h-1 flex-1 bg-slate-100 [&>div]:bg-[#0000FE]" aria-label="Question progress" />
             <span className="shrink-0 text-[10px] font-semibold tabular-nums text-[#0000CC] sm:text-xs">Q.{currentIndex + 1} of {totalQuestions}</span>
           </div>
         </header>
@@ -698,45 +691,42 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
             </div>
           </div>
 
-          <CardFooter className="z-10 flex flex-shrink-0 flex-col gap-1 border-t border-slate-100 bg-white px-3 pt-2 pb-[max(0.4rem,env(safe-area-inset-bottom))] sm:px-5 sm:pb-3">
-            <div className="flex justify-between w-full">
-                <Button 
-                    variant="outline" 
-                    onClick={prevQuestion} 
-                    disabled={currentIndex === 0}
-                    className="h-9 w-24 rounded-xl border-slate-200 sm:w-28"
-                >
-                    <ChevronLeft className="w-4 h-4 mr-1" /> Prev
-                </Button>
+          <CardFooter className="z-10 flex flex-shrink-0 items-center justify-between gap-2 border-t border-slate-100 bg-white px-3 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] sm:px-5">
+              <Button
+                  variant="outline"
+                  onClick={prevQuestion}
+                  disabled={currentIndex === 0}
+                  className="h-8 w-24 rounded-xl border-slate-200 sm:w-28"
+              >
+                  <ChevronLeft className="w-4 h-4 mr-1" /> Prev
+              </Button>
 
-                {isLastQuestion ? (
-                    <Button 
-                        onClick={() => setIsSubmitDialogOpen(true)} 
-                        className="h-9 w-24 rounded-xl bg-[#0000FE] text-white shadow-sm hover:bg-[#0000CC] sm:w-28"
-                    >
-                        Finish
-                    </Button>
-                ) : (
-                    <Button 
-                        className="h-9 w-24 rounded-xl bg-[#0000FE] text-white shadow-sm hover:bg-[#0000CC] sm:w-28"
-                        onClick={nextQuestion}
-                    >
-                        Next <ChevronRight className="w-4 h-4 ml-1" />
-                    </Button>
-                )}
-            </div>
-            
-            {!isLastQuestion && (
-                <button 
+              {!isLastQuestion ? (
+                <button
                     onClick={() => setIsSubmitDialogOpen(true)}
-                    className="flex w-full items-center justify-center py-1 text-[11px] text-muted-foreground transition-colors hover:text-destructive"
+                    className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-400 transition-colors hover:text-destructive"
                 >
-                    <Flag className="w-3 h-3 mr-1" /> Submit Exam Early
+                    <Flag className="w-3 h-3" /> Submit early
                 </button>
-            )}
-            <p className="hidden w-full text-center text-[10px] text-slate-400 sm:block">
-              A–D answer · N/P navigate · Enter next · S opens submit
-            </p>
+              ) : (
+                <span aria-hidden="true" />
+              )}
+
+              {isLastQuestion ? (
+                  <Button
+                      onClick={() => setIsSubmitDialogOpen(true)}
+                      className="h-8 w-24 rounded-xl bg-[#0000FE] text-white shadow-sm hover:bg-[#0000CC] sm:w-28"
+                  >
+                      Finish
+                  </Button>
+              ) : (
+                  <Button
+                      className="h-8 w-24 rounded-xl bg-[#0000FE] text-white shadow-sm hover:bg-[#0000CC] sm:w-28"
+                      onClick={nextQuestion}
+                  >
+                      Next <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
+              )}
           </CardFooter>
         </Card>
       </div>
