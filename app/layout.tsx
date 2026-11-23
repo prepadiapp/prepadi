@@ -14,9 +14,21 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Prepadi - WAEC/JAMB Exam Simulator",
+  title: "Examination Simulator",
   description: "Practice for your WAEC/JAMB exams with real questions.",
   manifest: "/manifest.json",
+  openGraph: {
+    title: "Examination Simulator",
+    description: "Practice for your WAEC/JAMB exams with real questions.",
+    url: "/",
+    siteName: "Prepadi",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Examination Simulator",
+    description: "Practice for your WAEC/JAMB exams with real questions.",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
