@@ -13,6 +13,7 @@ import {
   BarChart3,
   MonitorPlay,
   LogOut,
+  LayoutDashboard,
 } from 'lucide-react';
 import { HeroPin, ExamLogosOverlay } from '@/components/marketing/HeroScrollLock';
 import { SiteFooter } from '@/components/marketing/SiteFooter';
@@ -168,13 +169,32 @@ function VersionOneSaaSBento() {
               {authStatus === 'loading' ? (
                 <div aria-label="Checking sign-in status" className="h-9 w-20 animate-pulse rounded-xl bg-slate-100 sm:w-28" />
               ) : session?.user ? (
-                <button
-                  onClick={() => signOut({ callbackUrl: '/' })}
-                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2.5 text-xs font-semibold text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 sm:px-4 sm:text-sm"
-                >
-                  <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  Log out
-                </button>
+                <>
+                  <button
+                    onClick={() => {
+                      const role = (session.user as { role?: string })?.role;
+                      window.location.assign(
+                        role === 'ADMIN'
+                          ? '/admin'
+                          : role === 'ORGANIZATION'
+                            ? '/organization'
+                            : '/dashboard'
+                      );
+                    }}
+                    aria-label="Go to your dashboard"
+                    className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-2.5 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-700 sm:px-4 sm:text-sm"
+                  >
+                    <LayoutDashboard className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    <span className="hidden min-[400px]:inline">Dashboard</span>
+                  </button>
+                  <button
+                    onClick={() => signOut({ callbackUrl: '/' })}
+                    className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2.5 text-xs font-semibold text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 sm:px-4 sm:text-sm"
+                  >
+                    <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    Log out
+                  </button>
+                </>
               ) : (
                 <>
                   <button
