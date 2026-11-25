@@ -62,6 +62,14 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
   const [allowedExamIds, setAllowedExamIds] = useState<string[]>([]);
   const [allowedSubjectIds, setAllowedSubjectIds] = useState<string[]>([]);
   const [allowedYears, setAllowedYears] = useState<string[]>([]);
+  const [originalFeatures, setOriginalFeatures] = useState<PlanFeatures>({
+    allowedExamIds: [],
+    allowedSubjectIds: [],
+    allowedYears: [],
+  });
+  const [extraFeatures, setExtraFeatures] = useState<Record<string, unknown>>({});
+  const [confirmRemoval, setConfirmRemoval] = useState(false);
+  const [shrinkWarning, setShrinkWarning] = useState<string | null>(null);
 
   const [maxBaseExamSelections, setMaxBaseExamSelections] = useState<number | ''>('');
   const [allowsSpecialExams, setAllowsSpecialExams] = useState(false);
@@ -97,11 +105,39 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
     loadData();
   }, []);
 
+  const normalizeFeatureList = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+
+  const parseStoredFeatures = (raw: unknown): { parsed: PlanFeatures; extra: Record<string, unknown> } => {
+    const empty: PlanFeatures = { allowedExamIds: [], allowedSubjectIds: [], allowedYears: [] };
+    let record: Record<string, unknown> | null = null;
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (parsed && typeof parsed === 'object') record = parsed as Record<string, unknown>;
+      } catch {
+        record = null;
+      }
+    } else if (raw && typeof raw === 'object') {
+      record = raw as Record<string, unknown>;
+    }
+    if (!record) return { parsed: empty, extra: {} };
+    const { allowedExamIds, allowedSubjectIds, allowedYears, ...rest } = record;
+    return {
+      parsed: {
+        allowedExamIds: normalizeFeatureList(allowedExamIds),
+        allowedSubjectIds: normalizeFeatureList(allowedSubjectIds),
+        allowedYears: normalizeFeatureList(allowedYears),
+      },
+      extra: rest,
+    };
+  };
+
   useEffect(() => {
     if (!open) return;
 
     if (plan) {
-      const features = (plan.features || {}) as PlanFeatures;
+      const { parsed, extra } = parseStoredFeatures(plan.features);
       setName(plan.name);
       setDescription(plan.description || '');
       setPrice(plan.price);
@@ -109,9 +145,11 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
       setType(plan.type);
       setIsActive(plan.isActive);
       setMarketingBullets(Array.isArray(plan.marketingBullets) ? (plan.marketingBullets as string[]) : []);
-      setAllowedExamIds(features.allowedExamIds || []);
-      setAllowedSubjectIds(features.allowedSubjectIds || []);
-      setAllowedYears(features.allowedYears || []);
+      setOriginalFeatures(parsed);
+      setExtraFeatures(extra);
+      setAllowedExamIds(parsed.allowedExamIds);
+      setAllowedSubjectIds(parsed.allowedSubjectIds);
+      setAllowedYears(parsed.allowedYears);
       setMaxBaseExamSelections(plan.maxBaseExamSelections ?? '');
       setAllowsSpecialExams(plan.allowsSpecialExams);
       setCanCreateCustomExams(plan.canCreateCustomExams);
@@ -136,6 +174,8 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
       setType(PlanType.STUDENT);
       setIsActive(true);
       setMarketingBullets([]);
+      setOriginalFeatures({ allowedExamIds: [], allowedSubjectIds: [], allowedYears: [] });
+      setExtraFeatures({});
       setAllowedExamIds([]);
       setAllowedSubjectIds([]);
       setAllowedYears([]);
@@ -147,7 +187,15 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
     }
 
     setNewBullet('');
+    setConfirmRemoval(false);
+    setShrinkWarning(null);
   }, [open, plan]);
+
+  // Any filter change after a shrink warning clears the pending confirmation.
+  useEffect(() => {
+    setConfirmRemoval(false);
+    setShrinkWarning(null);
+  }, [allowedExamIds, allowedSubjectIds, allowedYears]);
 
   const addBullet = () => {
     if (!newBullet.trim()) return;
@@ -180,11 +228,34 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
     setSeatBands((current) => current.filter((band) => band.id !== id));
   };
 
+  const coversAll = (values: string[]) => values.includes('ALL');
+  const isNarrowing = (previous: string[], next: string[]) => {
+    if (coversAll(previous) && !coversAll(next)) return true;
+    if (previous.length > 0 && next.length === 0) return true;
+    return false;
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+
+    if (plan && !confirmRemoval) {
+      const narrowed: string[] = [];
+      if (isNarrowing(originalFeatures.allowedExamIds, allowedExamIds)) narrowed.push('exams');
+      if (isNarrowing(originalFeatures.allowedSubjectIds, allowedSubjectIds)) narrowed.push('subjects');
+      if (isNarrowing(originalFeatures.allowedYears, allowedYears)) narrowed.push('years');
+      if (narrowed.length > 0) {
+        setShrinkWarning(
+          `Saving will narrow coverage for: ${narrowed.join(', ')}. Students on this plan may lose access. Submit again to confirm.`
+        );
+        setConfirmRemoval(true);
+        return;
+      }
+    }
+
     setLoading(true);
 
-    const features: PlanFeatures = {
+    const features: PlanFeatures & Record<string, unknown> = {
+      ...extraFeatures,
       allowedExamIds,
       allowedSubjectIds,
       allowedYears,
@@ -199,6 +270,7 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
       features,
       isActive,
       marketingBullets,
+      confirmRemoval,
       maxBaseExamSelections:
         type === PlanType.ORGANIZATION && maxBaseExamSelections !== '' ? Number(maxBaseExamSelections) : null,
       allowsSpecialExams: type === PlanType.ORGANIZATION ? allowsSpecialExams : false,
@@ -226,7 +298,23 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) {
+        let message = await response.text();
+        try {
+          const data = JSON.parse(message) as { error?: string; narrowed?: string[] };
+          if (response.status === 409 && data.narrowed?.length) {
+            setShrinkWarning(
+              `The server blocked this save because it narrows coverage for: ${data.narrowed.join(', ')}. Submit again to confirm.`
+            );
+            setConfirmRemoval(true);
+            return;
+          }
+          if (data.error) message = data.error;
+        } catch {
+          // Non-JSON error body; use raw text.
+        }
+        throw new Error(message || 'Failed to save plan');
+      }
 
       toast.success('Plan saved successfully.');
       onSave();
@@ -240,11 +328,25 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
   const examOptions = allExams.map((exam) => ({ label: exam.name, value: exam.id }));
   const subjectOptions = allSubjects.map((subject) => ({ label: subject.name, value: subject.id }));
   const yearOptions = availableYears.map((year) => ({ label: String(year), value: String(year) }));
+  const allExamsEnabled = allowedExamIds.includes('ALL');
+  const allSubjectsEnabled = allowedSubjectIds.includes('ALL');
   const allYearsEnabled = allowedYears.includes('ALL');
+
+  const toggleAllExams = () => {
+    setAllowedExamIds((current) => (current.includes('ALL') ? [] : ['ALL']));
+  };
+
+  const toggleAllSubjects = () => {
+    setAllowedSubjectIds((current) => (current.includes('ALL') ? [] : ['ALL']));
+  };
 
   const toggleAllYears = () => {
     setAllowedYears((current) => (current.includes('ALL') ? [] : ['ALL']));
   };
+
+  const describeCoverage = (values: string[], singular: string, plural: string) =>
+    values.includes('ALL') ? `All ${plural}` : values.length === 0 ? `No ${plural}` : `${values.length} ${values.length === 1 ? singular : plural}`;
+  const coverageSummary = `${describeCoverage(allowedExamIds, 'exam', 'exams')} · ${describeCoverage(allowedSubjectIds, 'subject', 'subjects')} · ${describeCoverage(allowedYears, 'year', 'years')}`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -345,15 +447,62 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
                     <List className="h-4 w-4" />
                     <p className="text-sm font-medium">Student access filters</p>
                   </div>
+                  <p className="text-xs text-slate-500 -mt-2">Currently saved: {coverageSummary}</p>
 
                   <div className="space-y-2">
                     <Label>Allowed exams</Label>
-                    <MultiSelect options={examOptions} selected={allowedExamIds} onChange={setAllowedExamIds} placeholder="Select exams..." />
+                    <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                      <label className="flex items-start gap-3 rounded-xl bg-white px-4 py-3 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={allExamsEnabled}
+                          onChange={toggleAllExams}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          <span className="block font-medium text-slate-900">All current and future exams</span>
+                          <span className="mt-1 block text-xs text-slate-500">
+                            Give this plan access to every exam now and any new exams added later.
+                          </span>
+                        </span>
+                      </label>
+                      <MultiSelect
+                        options={examOptions}
+                        selected={allExamsEnabled ? [] : allowedExamIds}
+                        onChange={setAllowedExamIds}
+                        placeholder={examOptions.length > 0 ? 'Select exams...' : 'No exams available yet'}
+                        className="bg-white"
+                        disabled={allExamsEnabled}
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-2">
                     <Label>Allowed subjects</Label>
-                    <MultiSelect options={subjectOptions} selected={allowedSubjectIds} onChange={setAllowedSubjectIds} placeholder="Select subjects..." />
+                    <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                      <label className="flex items-start gap-3 rounded-xl bg-white px-4 py-3 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={allSubjectsEnabled}
+                          onChange={toggleAllSubjects}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          <span className="block font-medium text-slate-900">All current and future subjects</span>
+                          <span className="mt-1 block text-xs text-slate-500">
+                            Give this plan access to every subject now and any new subjects added later.
+                          </span>
+                        </span>
+                      </label>
+                      <MultiSelect
+                        options={subjectOptions}
+                        selected={allSubjectsEnabled ? [] : allowedSubjectIds}
+                        onChange={setAllowedSubjectIds}
+                        placeholder={subjectOptions.length > 0 ? 'Select subjects...' : 'No subjects available yet'}
+                        className="bg-white"
+                        disabled={allSubjectsEnabled}
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -379,6 +528,7 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
                         onChange={setAllowedYears}
                         placeholder={yearOptions.length > 0 ? 'Select specific available years...' : 'No seeded years available yet'}
                         className="bg-white"
+                        disabled={allYearsEnabled}
                       />
                       <p className="text-xs text-slate-500">
                         This list is pulled from the actual years already present in platform papers.
@@ -517,6 +667,14 @@ export function PlanFormDialog({ open, onOpenChange, plan, onSave }: PlanFormDia
               <input type="checkbox" checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
               Plan is active
             </label>
+
+            {shrinkWarning && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Narrowing coverage</AlertTitle>
+                <AlertDescription>{shrinkWarning}</AlertDescription>
+              </Alert>
+            )}
           </div>
 
           <DialogFooter>

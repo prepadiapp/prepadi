@@ -29,7 +29,55 @@ export async function PATCH(
       canCreateCustomExams,
       orgPricingEnabled,
       seatBands,
+      confirmRemoval,
     } = body;
+
+    const asStringList = (value: unknown): string[] =>
+      Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+
+    const parseStoredFeatures = (raw: unknown): Record<string, any> => {
+      if (typeof raw === 'string') {
+        try {
+          const parsed = JSON.parse(raw) as unknown;
+          if (parsed && typeof parsed === 'object') return { ...(parsed as Record<string, any>) };
+        } catch {
+          return {};
+        }
+        return {};
+      }
+      if (raw && typeof raw === 'object') return { ...(raw as Record<string, any>) };
+      return {};
+    };
+
+    // Merge incoming features over stored ones so an edit that omits a key
+    // (or sends a legacy shape) can never silently wipe existing coverage.
+    const existingPlan = await prisma.plan.findUnique({ where: { id }, select: { features: true } });
+    if (!existingPlan) return new NextResponse('Plan not found', { status: 404 });
+    const storedFeatures = parseStoredFeatures(existingPlan.features);
+    const incomingFeatures =
+      features && typeof features === 'object' ? { ...(features as Record<string, unknown>) } : {};
+    const mergedFeatures = { ...storedFeatures, ...incomingFeatures };
+
+    const narrows = (previous: unknown, next: unknown): boolean => {
+      const prev = asStringList(previous);
+      const nxt = asStringList(next);
+      if (prev.includes('ALL') && !nxt.includes('ALL')) return true;
+      if (prev.length > 0 && nxt.length === 0) return true;
+      return false;
+    };
+
+    const narrowedKeys = ['allowedExamIds', 'allowedSubjectIds', 'allowedYears'].filter(
+      (key) => key in incomingFeatures && narrows(storedFeatures[key], incomingFeatures[key])
+    );
+    if (narrowedKeys.length > 0 && confirmRemoval !== true) {
+      return NextResponse.json(
+        {
+          error: `Saving would narrow coverage for: ${narrowedKeys.join(', ')}. Resubmit with confirmRemoval to proceed.`,
+          narrowed: narrowedKeys,
+        },
+        { status: 409 }
+      );
+    }
 
     await prisma.orgPlanSeatBand.deleteMany({
       where: { planId: id },
@@ -43,7 +91,7 @@ export async function PATCH(
         price: Number(price),
         interval,
         type,
-        features,
+        features: mergedFeatures,
         isActive,
         marketingBullets: marketingBullets || undefined,
         maxBaseExamSelections:
