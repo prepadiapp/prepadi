@@ -1,7 +1,7 @@
 'use client';
 
 import { Subject } from '@prisma/client';
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -26,6 +26,11 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedMode = searchParams.get('mode')?.toLowerCase();
+  // Deep links (e.g. from Performance "Practice now") can preselect content.
+  const requestedExam = searchParams.get('exam')?.toLowerCase();
+  const requestedSubject = searchParams.get('subject')?.toLowerCase();
+  const appliedExamParam = useRef(false);
+  const appliedSubjectParam = useRef(false);
   
   const [isPracticeMode, setIsPracticeMode] = useState(
     requestedMode !== 'exam'
@@ -52,6 +57,27 @@ function ExamSelectorContent({ exams }: ExamSelectorProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [subjectLoadError, setSubjectLoadError] = useState<string>('');
   const [availabilityError, setAvailabilityError] = useState<string>('');
+
+  // Auto-apply deep-linked exam/subject once options are available.
+  useEffect(() => {
+    if (appliedExamParam.current || selectedExam || !requestedExam || exams.length === 0) return;
+    const match = exams.find(
+      (exam) => exam.shortName.toLowerCase() === requestedExam || exam.name.toLowerCase() === requestedExam
+    );
+    if (match) {
+      appliedExamParam.current = true;
+      setSelectedExam(match);
+    }
+  }, [exams, requestedExam, selectedExam]);
+
+  useEffect(() => {
+    if (appliedSubjectParam.current || selectedSubject || !requestedSubject || !selectedExam || subjects.length === 0) return;
+    const match = subjects.find((subject) => subject.name.toLowerCase() === requestedSubject);
+    if (match) {
+      appliedSubjectParam.current = true;
+      setSelectedSubject(match.id);
+    }
+  }, [subjects, requestedSubject, selectedSubject, selectedExam]);
 
   useEffect(() => {
     if (!selectedExam) {

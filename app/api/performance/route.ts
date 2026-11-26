@@ -61,21 +61,25 @@ export async function GET(request: Request) {
     })).reverse(); // Show oldest to newest
 
     // --- 4. Process Subject Performance (for the Bar Chart / "Weak Areas") ---
-    const subjectMap = new Map<string, { totalScore: number, count: number, name: string }>();
+    const subjectMap = new Map<string, { totalScore: number, count: number, name: string, examSlug: string }>();
     for (const attempt of attempts) {
       const subject = subjectMap.get(attempt.subject.name) || {
         totalScore: 0,
         count: 0,
         name: attempt.subject.name,
+        examSlug: attempt.exam.shortName,
       };
       subject.totalScore += attempt.score;
       subject.count++;
+      // Attempts are newest-first, so the first stored exam is the latest.
       subjectMap.set(attempt.subject.name, subject);
     }
     
     const subjectPerformance = Array.from(subjectMap.values()).map(s => ({
       name: s.name,
       avgScore: Math.round(s.totalScore / s.count),
+      attempts: s.count,
+      examSlug: s.examSlug,
     })).sort((a, b) => a.avgScore - b.avgScore); // Show lowest first
 
     // --- 5. Format History (for the Table) ---
