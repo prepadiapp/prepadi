@@ -16,7 +16,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import {
-  ChevronLeft, ChevronRight, Flag, Loader2, Timer, AlertCircle, Menu, BookOpen, Sparkles, Check, X, WifiOff, ZoomIn
+  ChevronLeft, ChevronRight, Flag, Loader2, Timer, AlertCircle, Menu, BookOpen, Sparkles, Check, X, WifiOff, ZoomIn, CheckCircle2, XCircle
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useRouter } from 'next/navigation';
@@ -99,6 +99,52 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
   const [isReporting, setIsReporting] = useState(false);
   const [reportedQuestionIds, setReportedQuestionIds] = useState<string[]>([]);
 
+  // Practice-mode instant check: per-question reveal recorded after answering.
+  const [revealed, setRevealed] = useState<
+    Record<string, { correctOptionId: string | null; pickedCorrect: boolean; explanation: string }>
+  >({});
+  const [checkingId, setCheckingId] = useState<string | null>(null);
+
+  // Practice-mode answering with instant check. Records the answer first,
+  // then asks the server for the verdict (exam mode stays blind).
+  // Once revealed, a question is locked.
+  const handleSelectOption = useCallback((questionId: string, optionId: string) => {
+      const target = questions.find((q) => q.id === questionId);
+      if (!target || target.type !== 'OBJECTIVE') {
+        selectAnswer(questionId, optionId);
+        return;
+      }
+      if (revealed[questionId]) return;
+      selectAnswer(questionId, optionId);
+      if (mode !== 'PRACTICE') return;
+      setCheckingId(optionId);
+      fetch('/api/quiz/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ questionId, optionId }),
+      })
+        .then(async (res) => {
+            if (!res.ok) throw new Error(await res.text());
+            return res.json();
+        })
+        .then((data) => {
+            setRevealed((prev) => ({
+                ...prev,
+                [questionId]: {
+                    correctOptionId: data.correctOptionId ?? null,
+                    pickedCorrect: !!data.correct,
+                    explanation: typeof data.explanation === 'string' ? data.explanation : '',
+                },
+            }));
+        })
+        .catch(() => {
+            toast.error('Could not check that answer. Continuing without instant feedback.');
+        })
+        .finally(() => {
+            setCheckingId(null);
+        });
+  }, [mode, questions, revealed, selectAnswer]);
+
   // Inner scroll region for the question content. Reset to top on every
   // question change so a new question never loads at the old scroll offset.
   // `showScrollHint` signals overflow so users can discover hidden content.
@@ -172,7 +218,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
 
       if (/^[a-d]$/.test(key) && question?.type === 'OBJECTIVE') {
         const option = question.options[key.charCodeAt(0) - 97];
-        if (option) selectAnswer(question.id, option.id);
+        if (option) handleSelectOption(question.id, option.id);
         else handled = false;
       } else if (key === 'n') {
         nextQuestion();
@@ -201,6 +247,7 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
     questions,
     currentIndex,
     selectAnswer,
+    handleSelectOption,
     nextQuestion,
     prevQuestion,
   ]);
@@ -382,6 +429,10 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
     currentQuestion.imageUrl ? { src: currentQuestion.imageUrl, alt: 'Question illustration' } : null,
   ].filter((image): image is { src: string; alt: string } => Boolean(image));
   const currentAnswer = answers.get(currentQuestion.id);
+  const practiceReveal =
+    mode === 'PRACTICE' && currentQuestion.type === 'OBJECTIVE'
+      ? revealed[currentQuestion.id]
+      : undefined;
   const totalQuestions = questions.length;
   const answeredCount = answers.size;
   const isLastQuestion = currentIndex === totalQuestions - 1;
@@ -617,30 +668,73 @@ export function QuizClient({ initialQuestions, quizDetails, mode, initialDuratio
                 {currentQuestion.type === 'OBJECTIVE' && (
                     <RadioGroup
                         value={currentAnswer}
-                        onValueChange={(optionId) => selectAnswer(currentQuestion.id, optionId)}
+                        onValueChange={(optionId) => handleSelectOption(currentQuestion.id, optionId)}
                         className="grid grid-cols-1 gap-1.5 sm:grid-cols-2"
                     >
                     {currentQuestion.options.map((option, index) => (
                         <div 
                             key={option.id} 
                             className={cn(
-                                "group relative flex min-h-12 cursor-pointer items-center gap-2 overflow-hidden rounded-2xl border p-2.5 transition-all duration-150 focus-within:ring-2 focus-within:ring-[#0000FE]/30 sm:p-3",
-                                currentAnswer === option.id 
-                                ? "border-[#0000FE] bg-[#EEF0FF] text-[#0000CC] shadow-[0_4px_14px_rgba(0,0,254,0.08)] ring-1 ring-[#0000FE]"
-                                : "border-[#DDE5F4] bg-white hover:border-[#AAB9FF] hover:bg-[#F8FAFF]"
+                                "group relative flex min-h-12 items-center gap-2 overflow-hidden rounded-2xl border p-2.5 transition-all duration-150 focus-within:ring-2 focus-within:ring-[#0000FE]/30 sm:p-3",
+                                !practiceReveal
+                                ? currentAnswer === option.id 
+                                  ? "cursor-pointer border-[#0000FE] bg-[#EEF0FF] text-[#0000CC] shadow-[0_4px_14px_rgba(0,0,254,0.08)] ring-1 ring-[#0000FE]"
+                                  : "cursor-pointer border-[#DDE5F4] bg-white hover:border-[#AAB9FF] hover:bg-[#F8FAFF]"
+                                : option.id === practiceReveal.correctOptionId
+                                  ? "border-green-500 bg-green-50 text-green-900 ring-1 ring-green-500"
+                                  : option.id === currentAnswer
+                                    ? "border-red-400 bg-red-50 text-red-900"
+                                    : "border-slate-200 bg-white opacity-60"
                             )}
-                            onClick={() => selectAnswer(currentQuestion.id, option.id)}
+                            onClick={() => handleSelectOption(currentQuestion.id, option.id)}
                         >
                         <RadioGroupItem value={option.id} id={option.id} className="sr-only" />
-                        <label htmlFor={option.id} className="flex-1 cursor-pointer leading-snug text-slate-700 group-hover:text-slate-900">
+                        <label htmlFor={option.id} className={cn("flex-1 leading-snug", practiceReveal ? "cursor-default" : "cursor-pointer text-slate-700 group-hover:text-slate-900")}>
                             <div className="flex gap-1.5">
-                                <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', currentAnswer === option.id ? 'bg-[#0000FE] text-white' : 'bg-[#EAF0FF] text-[#5B6B94]')}>{String.fromCharCode(65 + index)}</span>
+                                <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
+                                  practiceReveal
+                                    ? option.id === practiceReveal.correctOptionId
+                                      ? 'bg-green-600 text-white'
+                                      : option.id === currentAnswer
+                                        ? 'bg-red-500 text-white'
+                                        : 'bg-slate-100 text-slate-500'
+                                    : currentAnswer === option.id ? 'bg-[#0000FE] text-white' : 'bg-[#EAF0FF] text-[#5B6B94]')}>
+                                  {checkingId === option.id
+                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                    : String.fromCharCode(65 + index)}
+                                </span>
                                 <SafeHTML html={option.text} className="text-[13px] leading-snug sm:text-sm" />
                             </div>
                         </label>
                         </div>
                     ))}
                     </RadioGroup>
+                )}
+
+                {practiceReveal && (
+                    <div
+                        aria-live="polite"
+                        className={cn(
+                            "rounded-2xl border p-3 sm:p-4",
+                            practiceReveal.pickedCorrect
+                              ? "border-green-200 bg-green-50/70"
+                              : "border-amber-200 bg-amber-50/70"
+                        )}
+                    >
+                        <p className={cn(
+                            "flex items-center gap-1.5 text-sm font-bold",
+                            practiceReveal.pickedCorrect ? "text-green-800" : "text-amber-800"
+                        )}>
+                            {practiceReveal.pickedCorrect ? (
+                                <><CheckCircle2 className="h-4 w-4" /> Correct — well done!</>
+                            ) : (
+                                <><XCircle className="h-4 w-4" /> Not quite — the correct answer is highlighted above.</>
+                            )}
+                        </p>
+                        {practiceReveal.explanation ? (
+                            <SafeHTML html={practiceReveal.explanation} className="mt-1.5 text-sm leading-relaxed text-slate-700 [&_p]:my-1" />
+                        ) : null}
+                    </div>
                 )}
 
                 {currentQuestion.type === 'THEORY' && (

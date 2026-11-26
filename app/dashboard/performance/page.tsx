@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScoreTrendChart, SubjectPerformanceChart } from '@/components/PerformanceCharts';
 import { AttemptHistoryTable } from '@/components/AttemptHistoryTable';
-import { AlertCircle, ArrowUp, BarChart2, Check, Clock, Loader2, Target } from 'lucide-react';
+import { AlertCircle, ArrowUp, BarChart2, Check, Clock, Loader2, Sparkles, Target } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,7 @@ interface PerformanceData {
     avgTimePerQuestion: number;
   };
   scoreTrend: { name: string; score: number }[];
-  subjectPerformance: { name: string; avgScore: number }[];
+  subjectPerformance: { name: string; avgScore: number; attempts: number; examSlug: string }[];
   history: any[]; // Using 'any' for simplicity, matches AttemptHistoryTable
 }
 
@@ -35,6 +35,89 @@ function StatCard({ title, value, icon }: { title: string, value: string | numbe
         <div className="break-words text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{value}</div>
       </CardContent>
     </Card>
+  );
+}
+
+type SubjectFocus = { name: string; avgScore: number; attempts: number; examSlug: string };
+
+function SubjectFocusStrip({ data }: { data: SubjectFocus[] }) {
+  const doingWell = data
+    .filter((s) => (s.attempts ?? 0) >= 3 && s.avgScore >= 70)
+    .sort((a, b) => b.avgScore - a.avgScore)
+    .slice(0, 2);
+  const needsFocus = data
+    .filter((s) => (s.attempts ?? 0) >= 3 && s.avgScore < 50)
+    .sort((a, b) => a.avgScore - b.avgScore)
+    .slice(0, 2);
+  const warmingUp = data.filter((s) => (s.attempts ?? 0) < 3).slice(0, 3);
+
+  if (doingWell.length === 0 && needsFocus.length === 0 && warmingUp.length === 0) return null;
+
+  const practiceHref = (subject: SubjectFocus) =>
+    `/dashboard/practice?mode=practice&exam=${encodeURIComponent(subject.examSlug)}&subject=${encodeURIComponent(subject.name)}`;
+
+  return (
+    <section aria-label="Strengths and focus areas" className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3">
+      {doingWell.length > 0 && (
+        <Card className="border-green-200/80 bg-green-50/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-1.5 text-sm font-bold text-green-800">
+              <Check className="h-4 w-4" /> Doing well
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {doingWell.map((subject) => (
+              <div key={subject.name} className="flex items-center justify-between gap-2 rounded-xl bg-white/80 px-3 py-2">
+                <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{subject.name}</span>
+                <span className="shrink-0 text-sm font-extrabold tabular-nums text-green-700">{subject.avgScore}%</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {needsFocus.length > 0 && (
+        <Card className="border-amber-200/80 bg-amber-50/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-1.5 text-sm font-bold text-amber-800">
+              <Target className="h-4 w-4" /> Needs focus
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {needsFocus.map((subject) => (
+              <div key={subject.name} className="flex items-center justify-between gap-2 rounded-xl bg-white/80 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">{subject.name}</p>
+                  <p className="text-xs font-bold tabular-nums text-amber-700">{subject.avgScore}% · {subject.attempts} attempts</p>
+                </div>
+                <Button asChild size="sm" className="shrink-0 rounded-full bg-[#0000FE] text-xs hover:bg-[#0000CC]">
+                  <Link href={practiceHref(subject)}>Practice now</Link>
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {warmingUp.length > 0 && (
+        <Card className="border-slate-200/80 bg-white">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-1.5 text-sm font-bold text-slate-700">
+              <Sparkles className="h-4 w-4 text-[#0000FE]" /> Warming up
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-xs leading-5 text-slate-500">Keep going — a few more attempts unlocks your verdict.</p>
+            {warmingUp.map((subject) => (
+              <div key={subject.name} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2">
+                <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{subject.name}</span>
+                <span className="shrink-0 text-xs font-bold tabular-nums text-slate-500">{subject.attempts}/3</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+    </section>
   );
 }
 
@@ -127,6 +210,7 @@ export default function PerformancePage() {
       </header>
 
       <main className="min-w-0 space-y-5 sm:space-y-6">
+        <SubjectFocusStrip data={data.subjectPerformance} />
         
         <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <StatCard title="Average Score" value={`${data.stats.avgScore}%`} icon={<BarChart2 className="w-4 h-4 text-muted-foreground" />} />
